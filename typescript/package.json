@@ -1,0 +1,16 @@
+{
+  "name": "@meridian-ventures/hermes-vault",
+  "version": "1.0.0",
+  "description": "Hermes Vault SDK — tenant config, secrets, and prompts via Sentinel",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.4"
+  }
+}
