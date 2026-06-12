@@ -2,14 +2,17 @@
 
 Tenant-scoped configuration, secrets, and prompts for the Hermes ecosystem.
 
-Both SDKs are **read-only** wrappers around [Hermes Sentinel](../hermes-sentinel)'s `/api/v1/` endpoints, authenticated via `X-Internal-Key`. Write operations are performed by the dashboard directly via JWT.
+Both SDKs wrap [Hermes Sentinel](../hermes-sentinel)'s `/api/v1/` endpoints with two auth modes:
+
+- **Internal key** (`X-Internal-Key`) — for backend services, read-only.
+- **JWT** (`Authorization: Bearer`) — for the dashboard, read + write.
 
 ## SDKs
 
 | Package | Runtime | Consumers |
 |---|---|---|
 | `hermes-vault` (Python) | Python 3.11+ | Phoenix, URAG Indexing, Hermes Notifications |
-| `@meridian-ventures/hermes-vault` (TypeScript) | Node.js 18+ | Hermes Core |
+| `@meridian-ventures/hermes-vault` (TypeScript) | Node.js 18+ | Hermes Core, Hermes Dashboard |
 
 ## Python SDK
 
@@ -19,7 +22,7 @@ Both SDKs are **read-only** wrappers around [Hermes Sentinel](../hermes-sentinel
 pip install -e ./python
 ```
 
-### Usage
+### Usage (service mode — internal key)
 
 ```python
 from hermes_vault import HermesVault
@@ -45,6 +48,28 @@ print(prompt.sections)
 vault.invalidate("sae_university")
 ```
 
+### Usage (dashboard mode — JWT)
+
+```python
+vault = HermesVault(
+    sentinel_url="https://auth.sentinel.hermes-agent.com",
+    jwt_token="<JWT_TOKEN>",
+    service="phoenix",
+)
+
+# Update config/secrets
+vault.update_config("sae_university", config={"voice": "nova"}, secrets={"api_key": "sk-..."})
+
+# Prompt management
+slot = vault.ensure_prompt("system_prompt", tenant_id="sae_university")
+version = vault.create_prompt_version(
+    prompt_id=slot.id,
+    sections={"identity": "...", "guidelines": "..."},
+    version_name="v4",
+)
+versions = vault.get_prompt_versions("sae_university", "system_prompt")
+```
+
 ## TypeScript SDK
 
 ### Install
@@ -55,7 +80,7 @@ npm install
 npm run build
 ```
 
-### Usage
+### Usage (service mode — internal key)
 
 ```typescript
 import { HermesVault } from "@meridian-ventures/hermes-vault";
@@ -77,6 +102,30 @@ const prompt = await vault.getPrompt("sae_university", "system_prompt");
 
 // Invalidate cache
 vault.invalidate("sae_university");
+```
+
+### Usage (dashboard mode — JWT)
+
+```typescript
+const vault = new HermesVault({
+  sentinelUrl: "https://auth.sentinel.hermes-agent.com",
+  jwtToken: "<JWT_TOKEN>",
+  service: "phoenix",
+});
+
+// Update config/secrets
+await vault.updateConfig("sae_university", {
+  config: { voice: "nova" },
+  secrets: { api_key: "sk-..." },
+});
+
+// Prompt management
+const slot = await vault.ensurePrompt("system_prompt", "sae_university");
+const version = await vault.createPromptVersion(slot.id, {
+  sections: { identity: "...", guidelines: "..." },
+  versionName: "v4",
+});
+const versions = await vault.getPromptVersions("sae_university", "system_prompt");
 ```
 
 ---

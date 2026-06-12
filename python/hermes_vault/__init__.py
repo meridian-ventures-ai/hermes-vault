@@ -6,12 +6,21 @@ from hermes_vault.exceptions import (
     VaultHTTPError,
     VaultNotFoundError,
 )
-from hermes_vault.models import ActivePrompt, TenantConfig
+from hermes_vault.models import (
+    ActivePrompt,
+    CreatedPromptVersion,
+    EnsuredPrompt,
+    PromptVersion,
+    TenantConfig,
+)
 
 __all__ = [
     "HermesVault",
     "TenantConfig",
     "ActivePrompt",
+    "PromptVersion",
+    "CreatedPromptVersion",
+    "EnsuredPrompt",
     "VaultError",
     "VaultConnectionError",
     "VaultHTTPError",

@@ -1,5 +1,11 @@
 export { HermesVault, HermesVaultOptions } from "./client";
-export { TenantConfig, ActivePrompt } from "./models";
+export {
+  TenantConfig,
+  ActivePrompt,
+  PromptVersion,
+  CreatedPromptVersion,
+  EnsuredPrompt,
+} from "./models";
 export {
   VaultError,
   VaultConnectionError,

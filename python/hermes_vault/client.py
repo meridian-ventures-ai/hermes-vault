@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 from hermes_vault.cache import TenantCache
@@ -9,16 +11,30 @@ from hermes_vault.exceptions import (
     VaultHTTPError,
     VaultNotFoundError,
 )
-from hermes_vault.models import ActivePrompt, TenantConfig
+from hermes_vault.models import (
+    ActivePrompt,
+    CreatedPromptVersion,
+    EnsuredPrompt,
+    PromptVersion,
+    TenantConfig,
+)
 
 
 class HermesVault:
-    """Read-only client for fetching tenant-scoped config, secrets, and prompts from Sentinel.
+    """Client for fetching and managing tenant-scoped config, secrets, and prompts via Sentinel.
 
-    All responses are cached in-memory with TTL + LRU eviction. The ``service``
-    parameter is set once at construction and used implicitly in every call.
+    Supports two auth modes:
 
-    Example::
+    - **Internal key** (``X-Internal-Key``) — for backend services (read-only).
+    - **JWT** (``Authorization: Bearer``) — for the dashboard (read + write).
+
+    Read responses are cached in-memory with TTL + LRU eviction. Write methods
+    bypass and invalidate the cache automatically.
+
+    The ``service`` parameter is set once at construction and used implicitly
+    in every call.
+
+    Example (service mode)::
 
         vault = HermesVault(
             sentinel_url="http://localhost:8001",
@@ -26,33 +42,59 @@ class HermesVault:
             service="phoenix",
         )
         config = vault.get_config("sae_university")
-        secret = vault.get_secret("sae_university", "twilio_account_sid")
-        prompt = vault.get_prompt("sae_university", "system_prompt")
+
+    Example (dashboard mode)::
+
+        vault = HermesVault(
+            sentinel_url="http://localhost:8001",
+            jwt_token="eyJhbGciOi...",
+            service="phoenix",
+        )
+        vault.update_config("sae_university", config={"voice": "nova"})
     """
 
     def __init__(
         self,
         sentinel_url: str,
-        internal_key: str,
         service: str,
+        internal_key: str | None = None,
+        jwt_token: str | None = None,
         config_ttl_seconds: int = 600,
         prompt_ttl_seconds: int = 300,
         max_cache_size: int = 100,
     ) -> None:
         """Initialise the Vault client.
 
+        Provide exactly one of ``internal_key`` or ``jwt_token``.
+
         Args:
             sentinel_url: Base URL of the Sentinel server (e.g. ``"http://localhost:8001"``).
-            internal_key: Value sent as the ``X-Internal-Key`` header for service auth.
             service: Service name used in all endpoint paths (e.g. ``"phoenix"``).
+            internal_key: Value sent as ``X-Internal-Key`` header (service auth).
+            jwt_token: Bearer token sent as ``Authorization`` header (dashboard auth).
             config_ttl_seconds: Cache TTL for config entries. Default ``600`` (10 min).
             prompt_ttl_seconds: Cache TTL for prompt entries. Default ``300`` (5 min).
             max_cache_size: Max tenants kept in each LRU cache. Default ``100``.
+
+        Raises:
+            ValueError: If neither or both auth parameters are provided.
         """
+        if not internal_key and not jwt_token:
+            raise ValueError("Provide either internal_key or jwt_token")
+        if internal_key and jwt_token:
+            raise ValueError("Provide only one of internal_key or jwt_token, not both")
+
         self._service = service
+
+        headers: dict[str, str] = {}
+        if internal_key:
+            headers["X-Internal-Key"] = internal_key
+        else:
+            headers["Authorization"] = f"Bearer {jwt_token}"
+
         self._http = httpx.Client(
             base_url=sentinel_url.rstrip("/"),
-            headers={"X-Internal-Key": internal_key},
+            headers=headers,
             timeout=30.0,
         )
         self._config_cache: TenantCache[TenantConfig] = TenantCache(
@@ -62,9 +104,9 @@ class HermesVault:
             prompt_ttl_seconds, max_cache_size
         )
 
-    def _request(self, method: str, path: str) -> dict:
+    def _request(self, method: str, path: str, json: dict | None = None) -> dict:
         try:
-            response = self._http.request(method, path)
+            response = self._http.request(method, path, json=json)
         except httpx.TimeoutException as exc:
             raise VaultConnectionError(f"Request timed out: {exc}") from exc
         except httpx.ConnectError as exc:
@@ -72,7 +114,7 @@ class HermesVault:
         except httpx.HTTPError as exc:
             raise VaultConnectionError(str(exc)) from exc
 
-        if response.status_code == 200:
+        if response.status_code in (200, 201):
             return response.json()
 
         detail = ""
@@ -194,3 +236,182 @@ class HermesVault:
         """
         self._config_cache.delete(tenant_id)
         self._prompt_cache.delete_prefix(tenant_id)
+
+    # ------------------------------------------------------------------
+    # Write operations (JWT auth only)
+    # ------------------------------------------------------------------
+
+    def update_config(
+        self,
+        tenant_id: str,
+        config: dict[str, Any] | None = None,
+        secrets: dict[str, str] | None = None,
+    ) -> TenantConfig:
+        """Update config and/or secrets for a tenant/service pair.
+
+        Sends a ``PATCH`` to Sentinel. Secrets are encrypted server-side
+        before storage. Invalidates the config cache for this tenant.
+
+        Args:
+            tenant_id: Tenant identifier (e.g. ``"sae_university"``).
+            config: Non-sensitive operational config to merge (or ``None`` to skip).
+            secrets: Plaintext secrets to merge (or ``None`` to skip). Encrypted by Sentinel.
+
+        Returns:
+            Updated TenantConfig with merged values.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Tenant/service pair does not exist (404).
+            VaultHTTPError: Validation error or server error.
+        """
+        body: dict[str, Any] = {}
+        if config is not None:
+            body["config"] = config
+        if secrets is not None:
+            body["secrets"] = secrets
+
+        data = self._request(
+            "PATCH",
+            f"/api/v1/vault/configs/{tenant_id}/{self._service}",
+            json=body,
+        )
+        self._config_cache.delete(tenant_id)
+
+        return TenantConfig(
+            tenant_id=data["tenant_id"],
+            service=data["service"],
+            enabled=data["enabled"],
+            config=data.get("config", {}),
+            secrets=data.get("secrets", {}),
+        )
+
+    def get_prompt_versions(
+        self, tenant_id: str, prompt_key: str
+    ) -> list[PromptVersion]:
+        """Get full version history for a prompt.
+
+        Uses exact ``tenant_id`` match (no fallback). Pass ``"_default"``
+        to query default/fallback prompts.
+
+        Args:
+            tenant_id: Tenant identifier, or ``"_default"`` for default prompts.
+            prompt_key: Prompt key (e.g. ``"system_prompt"``).
+
+        Returns:
+            List of PromptVersion entries, most recent first.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+        """
+        data = self._request(
+            "GET",
+            f"/api/v1/prompts/{tenant_id}/{self._service}/{prompt_key}/versions",
+        )
+        return [
+            PromptVersion(
+                id=str(v["id"]),
+                version=v["version"],
+                version_name=v["version_name"],
+                version_note=v.get("version_note"),
+                is_active=v["is_active"],
+                created_by=v.get("created_by"),
+                created_at=str(v["created_at"]),
+            )
+            for v in data
+        ]
+
+    def create_prompt_version(
+        self,
+        prompt_id: str,
+        sections: dict[str, Any],
+        version_name: str,
+        version_note: str | None = None,
+        created_by: int | None = None,
+    ) -> CreatedPromptVersion:
+        """Create a new prompt version.
+
+        The new version is automatically set as active. The previous active
+        version is deactivated. Invalidates the prompt cache for all tenants
+        associated with this prompt.
+
+        Args:
+            prompt_id: UUID of the parent prompt.
+            sections: Complete snapshot of all prompt sections.
+            version_name: Human-readable version label (1-100 chars).
+            version_note: Optional longer description of changes.
+            created_by: User ID of the creator (defaults to JWT user if ``None``).
+
+        Returns:
+            CreatedPromptVersion with the new version details.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Prompt ID does not exist (404).
+            VaultHTTPError: Validation error or server error.
+        """
+        body: dict[str, Any] = {
+            "sections": sections,
+            "version_name": version_name,
+        }
+        if version_note is not None:
+            body["version_note"] = version_note
+        if created_by is not None:
+            body["created_by"] = created_by
+
+        data = self._request(
+            "POST",
+            f"/api/v1/prompts/{prompt_id}/versions",
+            json=body,
+        )
+        # Clear all prompt caches since we don't know the tenant_id from prompt_id
+        self._prompt_cache.clear()
+
+        return CreatedPromptVersion(
+            id=str(data["id"]),
+            prompt_id=str(data["prompt_id"]),
+            version=data["version"],
+            version_name=data["version_name"],
+            is_active=data["is_active"],
+        )
+
+    def ensure_prompt(
+        self,
+        prompt_key: str,
+        tenant_id: str | None = None,
+    ) -> EnsuredPrompt:
+        """Idempotently find or create a prompt slot.
+
+        If a prompt with the given ``tenant_id``/``service``/``prompt_key``
+        already exists, returns it. Otherwise creates a new empty prompt slot.
+
+        Args:
+            prompt_key: Prompt key (e.g. ``"system_prompt"``).
+            tenant_id: Tenant identifier, or ``None`` for a default/fallback prompt.
+
+        Returns:
+            EnsuredPrompt with ``.created`` indicating if it was newly created.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultHTTPError: Validation error or server error.
+        """
+        body: dict[str, Any] = {
+            "service": self._service,
+            "prompt_key": prompt_key,
+        }
+        if tenant_id is not None:
+            body["tenant_id"] = tenant_id
+
+        data = self._request(
+            "POST",
+            "/api/v1/prompts/ensure",
+            json=body,
+        )
+        return EnsuredPrompt(
+            id=str(data["id"]),
+            tenant_id=data.get("tenant_id"),
+            service=data["service"],
+            prompt_key=data["prompt_key"],
+            created=data["created"],
+        )

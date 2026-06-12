@@ -5,16 +5,28 @@ import {
   VaultHttpError,
   VaultNotFoundError,
 } from "./exceptions";
-import { ActivePrompt, TenantConfig } from "./models";
+import {
+  ActivePrompt,
+  CreatedPromptVersion,
+  EnsuredPrompt,
+  PromptVersion,
+  TenantConfig,
+} from "./models";
 
-/** Configuration options for the {@link HermesVault} client. */
+/**
+ * Configuration options for the {@link HermesVault} client.
+ *
+ * Provide exactly one of `internalKey` or `jwtToken`.
+ */
 export interface HermesVaultOptions {
   /** Base URL of the Sentinel server (e.g. `"http://localhost:8001"`). */
   sentinelUrl: string;
-  /** Value sent as the `X-Internal-Key` header for service auth. */
-  internalKey: string;
   /** Service name used in all endpoint paths (e.g. `"phoenix"`). */
   service: string;
+  /** Value sent as the `X-Internal-Key` header (service auth). */
+  internalKey?: string;
+  /** Bearer token sent as the `Authorization` header (dashboard auth). */
+  jwtToken?: string;
   /** Cache TTL for config entries in seconds. Default `600` (10 min). */
   configTtlSeconds?: number;
   /** Cache TTL for prompt entries in seconds. Default `300` (5 min). */
@@ -33,12 +45,16 @@ function snakeToCamelTopLevel(obj: Record<string, unknown>): Record<string, unkn
 }
 
 /**
- * Read-only client for fetching tenant-scoped config, secrets, and prompts from Sentinel.
+ * Client for fetching and managing tenant-scoped config, secrets, and prompts via Sentinel.
  *
- * All responses are cached in-memory with TTL + LRU eviction. The `service`
- * parameter is set once at construction and used implicitly in every call.
+ * Supports two auth modes:
+ * - **Internal key** (`X-Internal-Key`) — for backend services (read-only).
+ * - **JWT** (`Authorization: Bearer`) — for the dashboard (read + write).
  *
- * @example
+ * Read responses are cached in-memory with TTL + LRU eviction. Write methods
+ * bypass and invalidate the cache automatically.
+ *
+ * @example Service mode
  * ```ts
  * const vault = new HermesVault({
  *   sentinelUrl: "http://localhost:8001",
@@ -46,21 +62,41 @@ function snakeToCamelTopLevel(obj: Record<string, unknown>): Record<string, unkn
  *   service: "phoenix",
  * });
  * const config = await vault.getConfig("sae_university");
- * const secret = await vault.getSecret("sae_university", "twilio_account_sid");
- * const prompt = await vault.getPrompt("sae_university", "system_prompt");
+ * ```
+ *
+ * @example Dashboard mode
+ * ```ts
+ * const vault = new HermesVault({
+ *   sentinelUrl: "http://localhost:8001",
+ *   jwtToken: "eyJhbGciOi...",
+ *   service: "phoenix",
+ * });
+ * await vault.updateConfig("sae_university", { config: { voice: "nova" } });
  * ```
  */
 export class HermesVault {
   private readonly baseUrl: string;
-  private readonly internalKey: string;
+  private readonly authHeaders: Record<string, string>;
   private readonly service: string;
   private readonly configCache: TenantCache<TenantConfig>;
   private readonly promptCache: TenantCache<ActivePrompt>;
 
   constructor(options: HermesVaultOptions) {
+    if (!options.internalKey && !options.jwtToken) {
+      throw new Error("Provide either internalKey or jwtToken");
+    }
+    if (options.internalKey && options.jwtToken) {
+      throw new Error("Provide only one of internalKey or jwtToken, not both");
+    }
+
     this.baseUrl = options.sentinelUrl.replace(/\/+$/, "");
-    this.internalKey = options.internalKey;
     this.service = options.service;
+
+    if (options.internalKey) {
+      this.authHeaders = { "X-Internal-Key": options.internalKey };
+    } else {
+      this.authHeaders = { Authorization: `Bearer ${options.jwtToken}` };
+    }
 
     const maxCacheSize = options.maxCacheSize ?? 100;
     this.configCache = new TenantCache<TenantConfig>(
@@ -73,13 +109,22 @@ export class HermesVault {
     );
   }
 
-  private async request(method: string, path: string): Promise<Record<string, unknown>> {
+  private async request(
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      const init: RequestInit = {
         method,
-        headers: { "X-Internal-Key": this.internalKey },
-      });
+        headers: { ...this.authHeaders },
+      };
+      if (body !== undefined) {
+        (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+        init.body = JSON.stringify(body);
+      }
+      response = await fetch(`${this.baseUrl}${path}`, init);
     } catch (err) {
       throw new VaultConnectionError(
         `Connection failed: ${err instanceof Error ? err.message : String(err)}`
@@ -87,14 +132,13 @@ export class HermesVault {
     }
 
     if (response.ok) {
-      const json = await response.json();
-      return snakeToCamelTopLevel(json as Record<string, unknown>);
+      return await response.json();
     }
 
     let detail: string;
     try {
-      const body = await response.json();
-      detail = (body as Record<string, string>).detail ?? response.statusText;
+      const errBody = await response.json();
+      detail = (errBody as Record<string, string>).detail ?? response.statusText;
     } catch {
       detail = response.statusText;
     }
@@ -106,6 +150,10 @@ export class HermesVault {
       throw new VaultNotFoundError(detail);
     }
     throw new VaultHttpError(response.status, detail);
+  }
+
+  private convertTopLevel(obj: unknown): Record<string, unknown> {
+    return snakeToCamelTopLevel(obj as Record<string, unknown>);
   }
 
   /**
@@ -124,10 +172,11 @@ export class HermesVault {
     const cached = this.configCache.get(tenantId);
     if (cached !== null) return cached;
 
-    const data = await this.request(
+    const raw = await this.request(
       "GET",
       `/api/v1/vault/configs/${tenantId}/${this.service}`
     );
+    const data = this.convertTopLevel(raw);
     const config: TenantConfig = {
       tenantId: data.tenantId as string,
       service: data.service as string,
@@ -177,10 +226,11 @@ export class HermesVault {
     const cached = this.promptCache.get(cacheKey);
     if (cached !== null) return cached;
 
-    const data = await this.request(
+    const raw = await this.request(
       "GET",
       `/api/v1/prompts/${tenantId}/${this.service}/${promptKey}/active`
     );
+    const data = this.convertTopLevel(raw);
     const prompt: ActivePrompt = {
       promptId: data.promptId as string,
       tenantId: (data.tenantId as string | null) ?? null,
@@ -205,5 +255,158 @@ export class HermesVault {
   invalidate(tenantId: string): void {
     this.configCache.delete(tenantId);
     this.promptCache.deletePrefix(tenantId);
+  }
+
+  // ------------------------------------------------------------------
+  // Write operations (JWT auth only)
+  // ------------------------------------------------------------------
+
+  /**
+   * Update config and/or secrets for a tenant/service pair.
+   *
+   * Sends a `PATCH` to Sentinel. Secrets are encrypted server-side
+   * before storage. Invalidates the config cache for this tenant.
+   *
+   * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
+   * @param updates - Object with optional `config` and/or `secrets` to merge.
+   * @returns Updated TenantConfig with merged values.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
+   * @throws {@link VaultHttpError} Validation error or server error.
+   */
+  async updateConfig(
+    tenantId: string,
+    updates: {
+      config?: Record<string, unknown>;
+      secrets?: Record<string, string>;
+    },
+  ): Promise<TenantConfig> {
+    const raw = await this.request(
+      "PATCH",
+      `/api/v1/vault/configs/${tenantId}/${this.service}`,
+      updates,
+    );
+    this.configCache.delete(tenantId);
+
+    const data = this.convertTopLevel(raw);
+    return {
+      tenantId: data.tenantId as string,
+      service: data.service as string,
+      enabled: data.enabled as boolean,
+      config: (data.config as Record<string, unknown>) ?? {},
+      secrets: (data.secrets as Record<string, unknown>) ?? {},
+    };
+  }
+
+  /**
+   * Get full version history for a prompt.
+   *
+   * Uses exact `tenantId` match (no fallback). Pass `"_default"`
+   * to query default/fallback prompts.
+   *
+   * @param tenantId - Tenant identifier, or `"_default"` for default prompts.
+   * @param promptKey - Prompt key (e.g. `"system_prompt"`).
+   * @returns Array of PromptVersion entries.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   */
+  async getPromptVersions(
+    tenantId: string,
+    promptKey: string,
+  ): Promise<PromptVersion[]> {
+    const raw = await this.request(
+      "GET",
+      `/api/v1/prompts/${tenantId}/${this.service}/${promptKey}/versions`,
+    );
+    return (raw as Record<string, unknown>[]).map((v) => {
+      const d = this.convertTopLevel(v);
+      return {
+        id: String(d.id),
+        version: d.version as number,
+        versionName: d.versionName as string,
+        versionNote: (d.versionNote as string | null) ?? null,
+        isActive: d.isActive as boolean,
+        createdBy: (d.createdBy as number | null) ?? null,
+        createdAt: String(d.createdAt),
+      };
+    });
+  }
+
+  /**
+   * Create a new prompt version.
+   *
+   * The new version is automatically set as active. The previous active
+   * version is deactivated. Clears all prompt caches.
+   *
+   * @param promptId - UUID of the parent prompt.
+   * @param params - Version details.
+   * @returns CreatedPromptVersion with the new version details.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Prompt ID does not exist (404).
+   * @throws {@link VaultHttpError} Validation error or server error.
+   */
+  async createPromptVersion(
+    promptId: string,
+    params: {
+      sections: Record<string, unknown>;
+      versionName: string;
+      versionNote?: string;
+      createdBy?: number;
+    },
+  ): Promise<CreatedPromptVersion> {
+    const body: Record<string, unknown> = {
+      sections: params.sections,
+      version_name: params.versionName,
+    };
+    if (params.versionNote !== undefined) body.version_note = params.versionNote;
+    if (params.createdBy !== undefined) body.created_by = params.createdBy;
+
+    const raw = await this.request(
+      "POST",
+      `/api/v1/prompts/${promptId}/versions`,
+      body,
+    );
+    this.promptCache.clear();
+
+    const data = this.convertTopLevel(raw);
+    return {
+      id: String(data.id),
+      promptId: String(data.promptId),
+      version: data.version as number,
+      versionName: data.versionName as string,
+      isActive: data.isActive as boolean,
+    };
+  }
+
+  /**
+   * Idempotently find or create a prompt slot.
+   *
+   * If a prompt with the given `tenantId`/`service`/`promptKey` already
+   * exists, returns it. Otherwise creates a new empty prompt slot.
+   *
+   * @param promptKey - Prompt key (e.g. `"system_prompt"`).
+   * @param tenantId - Tenant identifier, or `undefined` for a default/fallback prompt.
+   * @returns EnsuredPrompt with `.created` indicating if it was newly created.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultHttpError} Validation error or server error.
+   */
+  async ensurePrompt(
+    promptKey: string,
+    tenantId?: string,
+  ): Promise<EnsuredPrompt> {
+    const body: Record<string, unknown> = {
+      service: this.service,
+      prompt_key: promptKey,
+    };
+    if (tenantId !== undefined) body.tenant_id = tenantId;
+
+    const raw = await this.request("POST", "/api/v1/prompts/ensure", body);
+    const data = this.convertTopLevel(raw);
+    return {
+      id: String(data.id),
+      tenantId: (data.tenantId as string | null) ?? null,
+      service: data.service as string,
+      promptKey: data.promptKey as string,
+      created: data.created as boolean,
+    };
   }
 }
