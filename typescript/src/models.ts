@@ -83,3 +83,83 @@ export interface EnsuredPrompt {
   /** `true` if a new prompt was created, `false` if it already existed. */
   created: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard models (JWT-only endpoints)
+// ---------------------------------------------------------------------------
+
+/** Single prompt slot returned by the list prompts endpoint. */
+export interface PromptListItem {
+  /** Prompt UUID. */
+  id: string;
+  /** Tenant ID, or `null` for default/fallback prompts. */
+  tenantId: string | null;
+  /** Service name. */
+  service: string;
+  /** Prompt key. */
+  promptKey: string;
+  /** Currently active version number, or `null` if no versions. */
+  activeVersion: number | null;
+  /** Label of the active version, or `null`. */
+  activeVersionName: string | null;
+  /** Total number of versions for this prompt. */
+  versionCount: number;
+  /** ISO-8601 timestamp of last update. */
+  updatedAt: string;
+}
+
+/** Full detail for a single prompt version, including sections content. */
+export interface PromptVersionDetail {
+  /** Version UUID. */
+  id: string;
+  /** Parent prompt UUID. */
+  promptId: string;
+  /** Version number. */
+  version: number;
+  /** Human-readable version label. */
+  versionName: string;
+  /** Optional longer description of changes. */
+  versionNote: string | null;
+  /** Prompt content sections. */
+  sections: Record<string, unknown>;
+  /** Whether this version is currently active. */
+  isActive: boolean;
+  /** User ID of the creator, or `null`. */
+  createdBy: number | null;
+  /** ISO-8601 timestamp of creation. */
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk load models (service startup)
+// ---------------------------------------------------------------------------
+
+/** Single active prompt within the bulk service response. */
+export interface BulkPromptEntry {
+  /** Active version number. */
+  version: number;
+  /** Human-readable version label. */
+  versionName: string;
+  /** Prompt content sections. */
+  sections: Record<string, unknown>;
+}
+
+/** All data for one tenant within the bulk service response. */
+export interface BulkTenantEntry {
+  /** Whether the tenant/service pair is active. */
+  enabled: boolean;
+  /** Non-sensitive operational settings. */
+  config: Record<string, unknown>;
+  /** Decrypted secret key-value pairs. */
+  secrets: Record<string, unknown>;
+  /** Active prompts keyed by prompt_key. */
+  prompts: Record<string, BulkPromptEntry>;
+}
+
+/** Bulk-loaded configs, secrets, and active prompts for all tenants of a service. */
+export interface BulkServiceData {
+  /** Service name. */
+  service: string;
+  /** Per-tenant data keyed by tenant_id. */
+  tenants: Record<string, BulkTenantEntry>;
+}

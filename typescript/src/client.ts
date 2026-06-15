@@ -7,9 +7,14 @@ import {
 } from "./exceptions";
 import {
   ActivePrompt,
+  BulkPromptEntry,
+  BulkServiceData,
+  BulkTenantEntry,
   CreatedPromptVersion,
   EnsuredPrompt,
+  PromptListItem,
   PromptVersion,
+  PromptVersionDetail,
   TenantConfig,
 } from "./models";
 
@@ -408,5 +413,223 @@ export class HermesVault {
       promptKey: data.promptKey as string,
       created: data.created as boolean,
     };
+  }
+
+  /**
+   * List all prompt slots for the authenticated user's tenant.
+   *
+   * Requires JWT auth. The tenant is resolved from the JWT token.
+   * Optionally filter by service name.
+   *
+   * @param service - Filter results to this service name, or `undefined` for all services.
+   * @returns Array of PromptListItem entries.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   */
+  async listPrompts(service?: string): Promise<PromptListItem[]> {
+    let path = "/api/v1/prompts";
+    if (service !== undefined) path += `?service=${encodeURIComponent(service)}`;
+
+    const raw = await this.request("GET", path);
+    return (raw as Record<string, unknown>[]).map((v) => {
+      const d = this.convertTopLevel(v);
+      return {
+        id: String(d.id),
+        tenantId: (d.tenantId as string | null) ?? null,
+        service: d.service as string,
+        promptKey: d.promptKey as string,
+        activeVersion: (d.activeVersion as number | null) ?? null,
+        activeVersionName: (d.activeVersionName as string | null) ?? null,
+        versionCount: (d.versionCount as number) ?? 0,
+        updatedAt: String(d.updatedAt),
+      };
+    });
+  }
+
+  /**
+   * Get full detail (including sections) for a single prompt version.
+   *
+   * Requires JWT auth.
+   *
+   * @param versionId - UUID of the prompt version.
+   * @returns PromptVersionDetail with `.sections` content.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Version does not exist (404).
+   */
+  async getVersionDetail(versionId: string): Promise<PromptVersionDetail> {
+    const raw = await this.request(
+      "GET",
+      `/api/v1/prompts/versions/${versionId}`,
+    );
+    const data = this.convertTopLevel(raw);
+    return {
+      id: String(data.id),
+      promptId: String(data.promptId),
+      version: data.version as number,
+      versionName: data.versionName as string,
+      versionNote: (data.versionNote as string | null) ?? null,
+      sections: (data.sections as Record<string, unknown>) ?? {},
+      isActive: data.isActive as boolean,
+      createdBy: (data.createdBy as number | null) ?? null,
+      createdAt: String(data.createdAt),
+    };
+  }
+
+  /**
+   * Set a specific version as the active version (rollback/promote).
+   *
+   * Deactivates the current active version and activates the specified
+   * one. Clears all prompt caches. Requires JWT auth.
+   *
+   * @param versionId - UUID of the version to activate.
+   * @returns PromptVersionDetail of the newly activated version.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Version does not exist (404).
+   * @throws {@link VaultHttpError} Validation error or server error.
+   */
+  async activateVersion(versionId: string): Promise<PromptVersionDetail> {
+    const raw = await this.request(
+      "PATCH",
+      `/api/v1/prompts/versions/${versionId}/activate`,
+    );
+    this.promptCache.clear();
+
+    const data = this.convertTopLevel(raw);
+    return {
+      id: String(data.id),
+      promptId: String(data.promptId),
+      version: data.version as number,
+      versionName: data.versionName as string,
+      versionNote: (data.versionNote as string | null) ?? null,
+      sections: (data.sections as Record<string, unknown>) ?? {},
+      isActive: data.isActive as boolean,
+      createdBy: (data.createdBy as number | null) ?? null,
+      createdAt: String(data.createdAt),
+    };
+  }
+
+  /**
+   * Update version_name and/or version_note for a prompt version.
+   *
+   * Does not modify the sections content — content changes require
+   * creating a new version. Requires JWT auth.
+   *
+   * @param versionId - UUID of the version to update.
+   * @param updates - Object with optional `versionName` and/or `versionNote`.
+   * @returns PromptVersionDetail with updated metadata.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Version does not exist (404).
+   * @throws {@link VaultHttpError} Validation error or server error.
+   */
+  async updateVersionMetadata(
+    versionId: string,
+    updates: {
+      versionName?: string;
+      versionNote?: string;
+    },
+  ): Promise<PromptVersionDetail> {
+    const body: Record<string, unknown> = {};
+    if (updates.versionName !== undefined) body.version_name = updates.versionName;
+    if (updates.versionNote !== undefined) body.version_note = updates.versionNote;
+
+    const raw = await this.request(
+      "PATCH",
+      `/api/v1/prompts/versions/${versionId}`,
+      body,
+    );
+    const data = this.convertTopLevel(raw);
+    return {
+      id: String(data.id),
+      promptId: String(data.promptId),
+      version: data.version as number,
+      versionName: data.versionName as string,
+      versionNote: (data.versionNote as string | null) ?? null,
+      sections: (data.sections as Record<string, unknown>) ?? {},
+      isActive: data.isActive as boolean,
+      createdBy: (data.createdBy as number | null) ?? null,
+      createdAt: String(data.createdAt),
+    };
+  }
+
+  /**
+   * Delete a prompt version.
+   *
+   * Cannot delete the last remaining version — delete the prompt instead.
+   * If the active version is deleted, the latest remaining version is
+   * auto-activated. Clears all prompt caches. Requires JWT auth.
+   *
+   * @param versionId - UUID of the version to delete.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Version does not exist (404).
+   * @throws {@link VaultHttpError} Cannot delete last version, or server error.
+   */
+  async deleteVersion(versionId: string): Promise<void> {
+    await this.request("DELETE", `/api/v1/prompts/versions/${versionId}`);
+    this.promptCache.clear();
+  }
+
+  /**
+   * Delete a prompt slot and all its versions.
+   *
+   * Clears all prompt caches. Requires JWT auth.
+   *
+   * @param promptId - UUID of the prompt to delete.
+   * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
+   * @throws {@link VaultNotFoundError} Prompt does not exist (404).
+   * @throws {@link VaultHttpError} Server error.
+   */
+  async deletePrompt(promptId: string): Promise<void> {
+    await this.request("DELETE", `/api/v1/prompts/${promptId}`);
+    this.promptCache.clear();
+  }
+
+  // ------------------------------------------------------------------
+  // Bulk load (Internal-Key auth, service startup)
+  // ------------------------------------------------------------------
+
+  /**
+   * Bulk-load all configs, secrets, and active prompts for this service.
+   *
+   * Returns everything the service needs to operate across all tenants
+   * in a single HTTP call. Designed for service startup to avoid
+   * per-tenant round-trips.
+   *
+   * The result is **not cached** — call this once at startup and store
+   * the result yourself.
+   *
+   * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
+   * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
+   * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
+   */
+  async getBulkConfig(): Promise<BulkServiceData> {
+    const raw = await this.request(
+      "GET",
+      `/api/v1/vault/configs/bulk/${this.service}`,
+    );
+    const data = raw as Record<string, unknown>;
+    const rawTenants = (data.tenants ?? {}) as Record<string, Record<string, unknown>>;
+    const tenants: Record<string, BulkTenantEntry> = {};
+
+    for (const [tid, tdata] of Object.entries(rawTenants)) {
+      const rawPrompts = (tdata.prompts ?? {}) as Record<string, Record<string, unknown>>;
+      const prompts: Record<string, BulkPromptEntry> = {};
+
+      for (const [pkey, pdata] of Object.entries(rawPrompts)) {
+        const pd = this.convertTopLevel(pdata);
+        prompts[pkey] = {
+          version: pd.version as number,
+          versionName: pd.versionName as string,
+          sections: (pd.sections as Record<string, unknown>) ?? {},
+        };
+      }
+
+      tenants[tid] = {
+        enabled: tdata.enabled as boolean,
+        config: (tdata.config as Record<string, unknown>) ?? {},
+        secrets: (tdata.secrets as Record<string, unknown>) ?? {},
+        prompts,
+      };
+    }
+
+    return { service: data.service as string, tenants };
   }
 }

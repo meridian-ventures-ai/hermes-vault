@@ -115,3 +115,112 @@ class EnsuredPrompt:
     service: str
     prompt_key: str
     created: bool
+
+
+# ---------------------------------------------------------------------------
+# Dashboard models (JWT-only endpoints)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PromptListItem:
+    """Single prompt slot returned by the list prompts endpoint.
+
+    Attributes:
+        id: Prompt UUID.
+        tenant_id: Tenant ID, or ``None`` for default/fallback prompts.
+        service: Service name.
+        prompt_key: Prompt key.
+        active_version: Currently active version number, or ``None`` if no versions.
+        active_version_name: Label of the active version, or ``None``.
+        version_count: Total number of versions for this prompt.
+        updated_at: ISO-8601 timestamp of last update.
+    """
+
+    id: str
+    tenant_id: str | None
+    service: str
+    prompt_key: str
+    active_version: int | None
+    active_version_name: str | None
+    version_count: int
+    updated_at: str
+
+
+@dataclass
+class PromptVersionDetail:
+    """Full detail for a single prompt version, including sections content.
+
+    Attributes:
+        id: Version UUID.
+        prompt_id: Parent prompt UUID.
+        version: Version number.
+        version_name: Human-readable version label.
+        version_note: Optional longer description of changes.
+        sections: Prompt content sections.
+        is_active: Whether this version is currently active.
+        created_by: User ID of the creator, or ``None``.
+        created_at: ISO-8601 timestamp of creation.
+    """
+
+    id: str
+    prompt_id: str
+    version: int
+    version_name: str
+    version_note: str | None
+    sections: dict[str, Any] = field(default_factory=dict)
+    is_active: bool = False
+    created_by: int | None = None
+    created_at: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Bulk load models (service startup)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BulkPromptEntry:
+    """Single active prompt within the bulk service response.
+
+    Attributes:
+        version: Active version number.
+        version_name: Human-readable version label.
+        sections: Prompt content sections.
+    """
+
+    version: int
+    version_name: str
+    sections: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BulkTenantEntry:
+    """All data for one tenant within the bulk service response.
+
+    Attributes:
+        enabled: Whether the tenant/service pair is active.
+        config: Non-sensitive operational settings.
+        secrets: Decrypted secret key-value pairs.
+        prompts: Active prompts keyed by prompt_key.
+    """
+
+    enabled: bool
+    config: dict[str, Any] = field(default_factory=dict)
+    secrets: dict[str, Any] = field(default_factory=dict)
+    prompts: dict[str, BulkPromptEntry] = field(default_factory=dict)
+
+
+@dataclass
+class BulkServiceData:
+    """Bulk-loaded configs, secrets, and active prompts for all tenants of a service.
+
+    Returned by :meth:`HermesVault.get_bulk_config` for service startup.
+
+    Attributes:
+        service: Service name.
+        tenants: Per-tenant data keyed by tenant_id.
+    """
+
+    service: str
+    tenants: dict[str, BulkTenantEntry] = field(default_factory=dict)

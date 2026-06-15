@@ -8,9 +8,14 @@ from hermes_vault.exceptions import (
 )
 from hermes_vault.models import (
     ActivePrompt,
+    BulkPromptEntry,
+    BulkServiceData,
+    BulkTenantEntry,
     CreatedPromptVersion,
     EnsuredPrompt,
+    PromptListItem,
     PromptVersion,
+    PromptVersionDetail,
     TenantConfig,
 )
 
@@ -19,8 +24,13 @@ __all__ = [
     "TenantConfig",
     "ActivePrompt",
     "PromptVersion",
+    "PromptVersionDetail",
     "CreatedPromptVersion",
     "EnsuredPrompt",
+    "PromptListItem",
+    "BulkPromptEntry",
+    "BulkTenantEntry",
+    "BulkServiceData",
     "VaultError",
     "VaultConnectionError",
     "VaultHTTPError",

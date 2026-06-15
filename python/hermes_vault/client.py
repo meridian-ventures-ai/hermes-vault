@@ -13,9 +13,14 @@ from hermes_vault.exceptions import (
 )
 from hermes_vault.models import (
     ActivePrompt,
+    BulkPromptEntry,
+    BulkServiceData,
+    BulkTenantEntry,
     CreatedPromptVersion,
     EnsuredPrompt,
+    PromptListItem,
     PromptVersion,
+    PromptVersionDetail,
     TenantConfig,
 )
 
@@ -415,3 +420,223 @@ class HermesVault:
             prompt_key=data["prompt_key"],
             created=data["created"],
         )
+
+    def list_prompts(
+        self, service: str | None = None
+    ) -> list[PromptListItem]:
+        """List all prompt slots for the authenticated user's tenant.
+
+        Requires JWT auth. The tenant is resolved from the JWT token.
+        Optionally filter by service name.
+
+        Args:
+            service: Filter results to this service name, or ``None`` for all services.
+
+        Returns:
+            List of PromptListItem entries.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+        """
+        path = "/api/v1/prompts"
+        if service is not None:
+            path += f"?service={service}"
+
+        data = self._request("GET", path)
+        return [
+            PromptListItem(
+                id=str(item["id"]),
+                tenant_id=item.get("tenant_id"),
+                service=item["service"],
+                prompt_key=item["prompt_key"],
+                active_version=item.get("active_version"),
+                active_version_name=item.get("active_version_name"),
+                version_count=item.get("version_count", 0),
+                updated_at=str(item["updated_at"]),
+            )
+            for item in data
+        ]
+
+    def get_version_detail(self, version_id: str) -> PromptVersionDetail:
+        """Get full detail (including sections) for a single prompt version.
+
+        Requires JWT auth.
+
+        Args:
+            version_id: UUID of the prompt version.
+
+        Returns:
+            PromptVersionDetail with ``.sections`` content.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Version does not exist (404).
+        """
+        data = self._request("GET", f"/api/v1/prompts/versions/{version_id}")
+        return PromptVersionDetail(
+            id=str(data["id"]),
+            prompt_id=str(data["prompt_id"]),
+            version=data["version"],
+            version_name=data["version_name"],
+            version_note=data.get("version_note"),
+            sections=data.get("sections", {}),
+            is_active=data["is_active"],
+            created_by=data.get("created_by"),
+            created_at=str(data["created_at"]),
+        )
+
+    def activate_version(self, version_id: str) -> PromptVersionDetail:
+        """Set a specific version as the active version (rollback/promote).
+
+        Deactivates the current active version and activates the specified
+        one. Clears all prompt caches. Requires JWT auth.
+
+        Args:
+            version_id: UUID of the version to activate.
+
+        Returns:
+            PromptVersionDetail of the newly activated version.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Version does not exist (404).
+            VaultHTTPError: Validation error or server error.
+        """
+        data = self._request(
+            "PATCH", f"/api/v1/prompts/versions/{version_id}/activate"
+        )
+        self._prompt_cache.clear()
+
+        return PromptVersionDetail(
+            id=str(data["id"]),
+            prompt_id=str(data["prompt_id"]),
+            version=data["version"],
+            version_name=data["version_name"],
+            version_note=data.get("version_note"),
+            sections=data.get("sections", {}),
+            is_active=data["is_active"],
+            created_by=data.get("created_by"),
+            created_at=str(data["created_at"]),
+        )
+
+    def update_version_metadata(
+        self,
+        version_id: str,
+        version_name: str | None = None,
+        version_note: str | None = None,
+    ) -> PromptVersionDetail:
+        """Update version_name and/or version_note for a prompt version.
+
+        Does not modify the sections content — content changes require
+        creating a new version. Requires JWT auth.
+
+        Args:
+            version_id: UUID of the version to update.
+            version_name: New version label (1-100 chars), or ``None`` to leave unchanged.
+            version_note: New description, or ``None`` to leave unchanged.
+
+        Returns:
+            PromptVersionDetail with updated metadata.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Version does not exist (404).
+            VaultHTTPError: Validation error or server error.
+        """
+        body: dict[str, Any] = {}
+        if version_name is not None:
+            body["version_name"] = version_name
+        if version_note is not None:
+            body["version_note"] = version_note
+
+        data = self._request(
+            "PATCH",
+            f"/api/v1/prompts/versions/{version_id}",
+            json=body,
+        )
+        return PromptVersionDetail(
+            id=str(data["id"]),
+            prompt_id=str(data["prompt_id"]),
+            version=data["version"],
+            version_name=data["version_name"],
+            version_note=data.get("version_note"),
+            sections=data.get("sections", {}),
+            is_active=data["is_active"],
+            created_by=data.get("created_by"),
+            created_at=str(data["created_at"]),
+        )
+
+    def delete_version(self, version_id: str) -> None:
+        """Delete a prompt version.
+
+        Cannot delete the last remaining version — delete the prompt instead.
+        If the active version is deleted, the latest remaining version is
+        auto-activated. Clears all prompt caches. Requires JWT auth.
+
+        Args:
+            version_id: UUID of the version to delete.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Version does not exist (404).
+            VaultHTTPError: Cannot delete last version, or server error.
+        """
+        self._request("DELETE", f"/api/v1/prompts/versions/{version_id}")
+        self._prompt_cache.clear()
+
+    def delete_prompt(self, prompt_id: str) -> None:
+        """Delete a prompt slot and all its versions.
+
+        Clears all prompt caches. Requires JWT auth.
+
+        Args:
+            prompt_id: UUID of the prompt to delete.
+
+        Raises:
+            VaultAuthError: JWT is missing or invalid (401/403).
+            VaultNotFoundError: Prompt does not exist (404).
+            VaultHTTPError: Server error.
+        """
+        self._request("DELETE", f"/api/v1/prompts/{prompt_id}")
+        self._prompt_cache.clear()
+
+    # ------------------------------------------------------------------
+    # Bulk load (Internal-Key auth, service startup)
+    # ------------------------------------------------------------------
+
+    def get_bulk_config(self) -> BulkServiceData:
+        """Bulk-load all configs, secrets, and active prompts for this service.
+
+        Returns everything the service needs to operate across all tenants
+        in a single HTTP call. Designed for service startup to avoid
+        per-tenant round-trips.
+
+        The result is **not cached** — call this once at startup and store
+        the result yourself.
+
+        Returns:
+            BulkServiceData with per-tenant configs, secrets, and active prompts.
+
+        Raises:
+            VaultAuthError: Internal key is missing or invalid (401/403).
+            VaultConnectionError: Sentinel is unreachable or timed out.
+        """
+        data = self._request(
+            "GET", f"/api/v1/vault/configs/bulk/{self._service}"
+        )
+        tenants: dict[str, BulkTenantEntry] = {}
+        for tid, tdata in data.get("tenants", {}).items():
+            prompts: dict[str, BulkPromptEntry] = {}
+            for pkey, pdata in tdata.get("prompts", {}).items():
+                prompts[pkey] = BulkPromptEntry(
+                    version=pdata["version"],
+                    version_name=pdata["version_name"],
+                    sections=pdata.get("sections", {}),
+                )
+            tenants[tid] = BulkTenantEntry(
+                enabled=tdata["enabled"],
+                config=tdata.get("config", {}),
+                secrets=tdata.get("secrets", {}),
+                prompts=prompts,
+            )
+        return BulkServiceData(service=data["service"], tenants=tenants)

@@ -68,6 +68,39 @@ version = vault.create_prompt_version(
     version_name="v4",
 )
 versions = vault.get_prompt_versions("sae_university", "system_prompt")
+
+# List all prompt slots for the tenant
+prompts = vault.list_prompts(service="phoenix")
+
+# Get full version detail (including sections)
+detail = vault.get_version_detail(versions[0].id)
+
+# Rollback to a previous version
+vault.activate_version(versions[1].id)
+
+# Update version metadata (name/note only)
+vault.update_version_metadata(versions[0].id, version_name="v3 — revised")
+
+# Delete a version or an entire prompt
+vault.delete_version(versions[0].id)
+vault.delete_prompt(slot.id)
+```
+
+### Usage (bulk load — service startup)
+
+```python
+vault = HermesVault(
+    sentinel_url="https://auth.sentinel.hermes-agent.com",
+    internal_key="<INTERNAL_SERVICE_KEY>",
+    service="phoenix",
+)
+
+# Load everything at startup in a single call
+bulk = vault.get_bulk_config()
+for tenant_id, tenant_data in bulk.tenants.items():
+    print(tenant_id, tenant_data.enabled, tenant_data.config)
+    for prompt_key, prompt in tenant_data.prompts.items():
+        print(f"  {prompt_key}: v{prompt.version} ({prompt.version_name})")
 ```
 
 ## TypeScript SDK
@@ -126,6 +159,41 @@ const version = await vault.createPromptVersion(slot.id, {
   versionName: "v4",
 });
 const versions = await vault.getPromptVersions("sae_university", "system_prompt");
+
+// List all prompt slots for the tenant
+const prompts = await vault.listPrompts("phoenix");
+
+// Get full version detail (including sections)
+const detail = await vault.getVersionDetail(versions[0].id);
+
+// Rollback to a previous version
+await vault.activateVersion(versions[1].id);
+
+// Update version metadata (name/note only)
+await vault.updateVersionMetadata(versions[0].id, { versionName: "v3 — revised" });
+
+// Delete a version or an entire prompt
+await vault.deleteVersion(versions[0].id);
+await vault.deletePrompt(slot.id);
+```
+
+### Usage (bulk load — service startup)
+
+```typescript
+const vault = new HermesVault({
+  sentinelUrl: "https://auth.sentinel.hermes-agent.com",
+  internalKey: "<INTERNAL_SERVICE_KEY>",
+  service: "phoenix",
+});
+
+// Load everything at startup in a single call
+const bulk = await vault.getBulkConfig();
+for (const [tenantId, tenantData] of Object.entries(bulk.tenants)) {
+  console.log(tenantId, tenantData.enabled, tenantData.config);
+  for (const [promptKey, prompt] of Object.entries(tenantData.prompts)) {
+    console.log(`  ${promptKey}: v${prompt.version} (${prompt.versionName})`);
+  }
+}
 ```
 
 ---
