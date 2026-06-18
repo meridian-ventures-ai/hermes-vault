@@ -2,13 +2,11 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
 *.egg
 .venv/
 
 # TypeScript
 typescript/node_modules/
-typescript/dist/
 
 # IDE
 .vscode/
