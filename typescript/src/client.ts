@@ -24,7 +24,7 @@ import {
  * Provide exactly one of `internalKey` or `jwtToken`.
  */
 export interface HermesVaultOptions {
-  /** Base URL of the Sentinel server (e.g. `"http://localhost:8001"`). */
+  /** Base URL of the Sentinel server (e.g. `"http://localhost:8000"`). */
   sentinelUrl: string;
   /** Service name used in all endpoint paths (e.g. `"phoenix"`). */
   service: string;
@@ -32,6 +32,10 @@ export interface HermesVaultOptions {
   internalKey?: string;
   /** Bearer token sent as the `Authorization` header (dashboard auth). */
   jwtToken?: string;
+  /** For JWT dashboard auth with SERVICE or multi-tenant users: the active tenant id.
+   * Sent as `X-Operating-Tenant-Id` header so Sentinel can resolve tenant for list/activate etc.
+   */
+  operatingTenantId?: string;
   /** Cache TTL for config entries in seconds. Default `600` (10 min). */
   configTtlSeconds?: number;
   /** Cache TTL for prompt entries in seconds. Default `300` (5 min). */
@@ -83,6 +87,7 @@ export class HermesVault {
   private readonly baseUrl: string;
   private readonly authHeaders: Record<string, string>;
   private readonly service: string;
+  private readonly operatingTenantId?: string;
   private readonly configCache: TenantCache<TenantConfig>;
   private readonly promptCache: TenantCache<ActivePrompt>;
 
@@ -96,6 +101,7 @@ export class HermesVault {
 
     this.baseUrl = options.sentinelUrl.replace(/\/+$/, "");
     this.service = options.service;
+    this.operatingTenantId = options.operatingTenantId;
 
     if (options.internalKey) {
       this.authHeaders = { "X-Internal-Key": options.internalKey };
@@ -121,9 +127,13 @@ export class HermesVault {
   ): Promise<unknown> {
     let response: Response;
     try {
+      const headers: Record<string, string> = { ...this.authHeaders };
+      if (this.operatingTenantId && "Authorization" in headers) {
+        headers["X-Operating-Tenant-Id"] = this.operatingTenantId;
+      }
       const init: RequestInit = {
         method,
-        headers: { ...this.authHeaders },
+        headers,
       };
       if (body !== undefined) {
         (init.headers as Record<string, string>)["Content-Type"] = "application/json";
