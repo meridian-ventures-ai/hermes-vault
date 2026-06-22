@@ -45,6 +45,7 @@ class HermesVault {
     baseUrl;
     authHeaders;
     service;
+    operatingTenantId;
     configCache;
     promptCache;
     constructor(options) {
@@ -56,6 +57,7 @@ class HermesVault {
         }
         this.baseUrl = options.sentinelUrl.replace(/\/+$/, "");
         this.service = options.service;
+        this.operatingTenantId = options.operatingTenantId;
         if (options.internalKey) {
             this.authHeaders = { "X-Internal-Key": options.internalKey };
         }
@@ -69,9 +71,13 @@ class HermesVault {
     async request(method, path, body) {
         let response;
         try {
+            const headers = { ...this.authHeaders };
+            if (this.operatingTenantId && "Authorization" in headers) {
+                headers["X-Operating-Tenant-Id"] = this.operatingTenantId;
+            }
             const init = {
                 method,
-                headers: { ...this.authHeaders },
+                headers,
             };
             if (body !== undefined) {
                 init.headers["Content-Type"] = "application/json";

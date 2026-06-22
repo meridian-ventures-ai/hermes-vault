@@ -109,8 +109,8 @@ for tenant_id, tenant_data in bulk.tenants.items():
 
 ```bash
 cd typescript
-npm install
-npm run build
+yarn install
+yarn build
 ```
 
 ### Usage (service mode — internal key)
@@ -217,31 +217,33 @@ Any change you make to `hermes-vault/python/hermes_vault/*.py` is picked up imme
 
 #### TypeScript (Hermes Core)
 
-Link the SDK locally using `npm link`:
+Link the SDK locally using `yarn link`:
 
 ```bash
 # Step 1: In the SDK directory, build and create a global link
 cd C:\Dev\Meridian\hermes-vault\typescript
-npm run build
-npm link
+yarn build
+yarn link
 
 # Step 2: In the consuming project, link to the SDK
 cd C:\Dev\Meridian\hermes-core
-npm link @meridian-ventures/hermes-vault
+yarn link @meridian-ventures/hermes-vault
 ```
 
 After linking, rebuild the SDK whenever you change `.ts` source files:
 
 ```bash
 cd C:\Dev\Meridian\hermes-vault\typescript
-npm run build
+yarn build
 ```
+
+(Note: because `dist/` is tracked in git, you will usually want to commit the updated build artifacts too.)
 
 The consuming project picks up the new build immediately. To unlink when done:
 
 ```bash
 cd C:\Dev\Meridian\hermes-core
-npm unlink @meridian-ventures/hermes-vault
+yarn unlink @meridian-ventures/hermes-vault
 ```
 
 ---
