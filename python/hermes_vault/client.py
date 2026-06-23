@@ -333,12 +333,17 @@ class HermesVault:
         version_name: str,
         version_note: str | None = None,
         created_by: int | None = None,
+        activate: bool = True,
     ) -> CreatedPromptVersion:
         """Create a new prompt version.
 
-        The new version is automatically set as active. The previous active
-        version is deactivated. Invalidates the prompt cache for all tenants
-        associated with this prompt.
+        By default (``activate=True``), the new version is set as active and
+        the previous active version is deactivated. Pass ``activate=False``
+        to create the version as a draft without changing the currently active
+        version. The first version of a prompt is always activated regardless
+        of this flag.
+
+        Invalidates the prompt cache for all tenants associated with this prompt.
 
         Args:
             prompt_id: UUID of the parent prompt.
@@ -346,6 +351,8 @@ class HermesVault:
             version_name: Human-readable version label (1-100 chars).
             version_note: Optional longer description of changes.
             created_by: User ID of the creator (defaults to JWT user if ``None``).
+            activate: Set the new version as active immediately. Default ``True``.
+                Ignored for the first version of a prompt (always activated).
 
         Returns:
             CreatedPromptVersion with the new version details.
@@ -358,6 +365,7 @@ class HermesVault:
         body: dict[str, Any] = {
             "sections": sections,
             "version_name": version_name,
+            "activate": activate,
         }
         if version_note is not None:
             body["version_note"] = version_note

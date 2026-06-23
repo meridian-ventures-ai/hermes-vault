@@ -176,7 +176,9 @@ Get full version history for a prompt. Uses exact `tenant_id` match (no fallback
 
 ### 6. `POST /api/v1/prompts/{prompt_id}/versions`
 
-Create a new prompt version. Automatically activates the new version and deactivates the previous one.
+Create a new prompt version.
+
+By default (`activate=true`), the new version is set as active and the previous active version is deactivated. Pass `activate=false` to create the version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag.
 
 **Request** — `CreatePromptVersionRequest`:
 
@@ -185,7 +187,8 @@ Create a new prompt version. Automatically activates the new version and deactiv
   "sections": { "identity": "...", "guidelines": "..." },
   "version_name": "SAE v4",
   "version_note": "Rewrote identity section",
-  "created_by": 1
+  "created_by": 1,
+  "activate": true
 }
 ```
 
@@ -195,6 +198,7 @@ Create a new prompt version. Automatically activates the new version and deactiv
 | `version_name` | `string` | Yes | Version label (1-100 chars) |
 | `version_note` | `string \| null` | No | Optional description of changes |
 | `created_by` | `integer \| null` | No | User ID (defaults to JWT user) |
+| `activate` | `boolean` | No | Activate the new version immediately. Default `true`. Ignored for the first version of a prompt (always activated). |
 
 **Response** — `CreatePromptVersionResponse`:
 

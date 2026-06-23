@@ -145,8 +145,12 @@ export declare class HermesVault {
     /**
      * Create a new prompt version.
      *
-     * The new version is automatically set as active. The previous active
-     * version is deactivated. Clears all prompt caches.
+     * By default (`activate=true`), the new version is set as active and the
+     * previous active version is deactivated. Pass `activate: false` to create
+     * the version as a draft without changing the currently active version. The
+     * first version of a prompt is always activated regardless of this flag.
+     *
+     * Clears all prompt caches.
      *
      * @param promptId - UUID of the parent prompt.
      * @param params - Version details.
@@ -160,6 +164,9 @@ export declare class HermesVault {
         versionName: string;
         versionNote?: string;
         createdBy?: number;
+        /** Set the new version as active immediately. Default `true`.
+         * Ignored for the first version of a prompt (always activated). */
+        activate?: boolean;
     }): Promise<CreatedPromptVersion>;
     /**
      * Idempotently find or create a prompt slot.

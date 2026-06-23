@@ -66,7 +66,7 @@ export interface CreatedPromptVersion {
   version: number;
   /** Human-readable version label. */
   versionName: string;
-  /** Always `true` — new versions are automatically activated. */
+  /** `true` if the version was activated, `false` if created as a draft. */
   isActive: boolean;
 }
 

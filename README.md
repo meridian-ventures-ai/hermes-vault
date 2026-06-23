@@ -67,6 +67,14 @@ version = vault.create_prompt_version(
     sections={"identity": "...", "guidelines": "..."},
     version_name="v4",
 )
+
+# Create a draft version without activating it
+draft = vault.create_prompt_version(
+    prompt_id=slot.id,
+    sections={"identity": "...", "guidelines": "..."},
+    version_name="v5 draft",
+    activate=False,
+)
 versions = vault.get_prompt_versions("sae_university", "system_prompt")
 
 # List all prompt slots for the tenant
@@ -157,6 +165,13 @@ const slot = await vault.ensurePrompt("system_prompt", "sae_university");
 const version = await vault.createPromptVersion(slot.id, {
   sections: { identity: "...", guidelines: "..." },
   versionName: "v4",
+});
+
+// Create a draft version without activating it
+const draft = await vault.createPromptVersion(slot.id, {
+  sections: { identity: "...", guidelines: "..." },
+  versionName: "v5 draft",
+  activate: false,
 });
 const versions = await vault.getPromptVersions("sae_university", "system_prompt");
 

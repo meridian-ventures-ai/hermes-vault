@@ -88,7 +88,7 @@ class CreatedPromptVersion:
         prompt_id: Parent prompt UUID.
         version: Assigned version number.
         version_name: Human-readable version label.
-        is_active: Always ``True`` — new versions are automatically activated.
+        is_active: ``True`` if the version was activated, ``False`` if created as a draft.
     """
 
     id: str

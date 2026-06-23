@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.0
+
+Added support for creating prompt versions as drafts.
+
+### Changed endpoints (both SDKs)
+
+| Python method | TypeScript method | Change |
+|---|---|---|
+| `create_prompt_version(..., activate=True)` | `createPromptVersion(id, { ..., activate: true })` | New `activate` parameter (default `true`). Pass `false` to create a version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag. |
+
+### Model changes
+
+- `CreatedPromptVersion.is_active` / `isActive` — no longer always `true`; reflects whether the version was activated or created as a draft.
+
+### Documentation
+
+- Updated `CONTRACT.md` — added `activate` field to endpoint 6 (`POST /prompts/{prompt_id}/versions`).
+- Updated `README.md` — added draft version examples for both Python and TypeScript.
+
+---
+
 ## 1.1.0
 
 Added support for all new Sentinel dashboard and bulk-load endpoints.
