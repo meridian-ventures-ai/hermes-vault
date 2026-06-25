@@ -293,17 +293,23 @@ class HermesVault:
         else:
             self._prompt_cache.clear()
 
-    def invalidate(self, tenant_id: str) -> None:
-        """Clear all cached config and prompt entries for a tenant.
+    def invalidate(
+        self, tenant_id: str, resource: str | None = None
+    ) -> None:
+        """Clear cached entries for a tenant.
 
-        Call this when the dashboard updates a tenant's config or prompts.
-        The next ``get_config`` / ``get_prompt`` call will re-fetch from Sentinel.
+        When ``resource`` is provided, only the matching cache is cleared.
+        When omitted, both config and prompt caches are cleared.
 
         Args:
             tenant_id: Tenant identifier to invalidate.
+            resource: ``"config"`` or ``"prompt"`` to target a single cache,
+                or ``None`` to clear both (default).
         """
-        self._config_cache.delete(tenant_id)
-        self._prompt_cache.delete_prefix(tenant_id)
+        if resource is None or resource == "config":
+            self._config_cache.delete(tenant_id)
+        if resource is None or resource == "prompt":
+            self._prompt_cache.delete_prefix(tenant_id)
 
     # ------------------------------------------------------------------
     # Write operations (JWT auth only)

@@ -300,4 +300,4 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
 - **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.
 - **Tenant switch**: call `set_operating_tenant_id` / `setOperatingTenantId` instead of creating a new instance — the cache is preserved across switches.
-- **`invalidate(tenant_id)`**: clears all cache entries for that tenant immediately.
+- **`invalidate(tenant_id, resource?)`**: clears cache entries for that tenant. Pass `"config"` or `"prompt"` to target a single cache, or omit to clear both.

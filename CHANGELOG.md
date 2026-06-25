@@ -11,6 +11,7 @@ Mutable access token for singleton dashboard clients, and no-TTL caching by defa
 | **`set_access_token` / `setAccessToken`** | New public method to update the JWT token at runtime without recreating the client. Enables a singleton vault client whose credentials are synced per-request from the session (e.g. `localStorage`). |
 | **Python auth headers** | Auth headers (`Authorization` / `X-Internal-Key`) are now stored as a mutable instance dict and merged per-request, matching the TypeScript SDK pattern. Previously baked into `httpx.Client` at construction. |
 | **Cache TTL defaults** | `config_ttl_seconds` / `configTtlSeconds` and `prompt_ttl_seconds` / `promptTtlSeconds` now default to `None`/`null` (no expiration). Cached entries persist until explicitly invalidated via `invalidate(tenant_id)` or evicted by LRU. Pass a value to restore time-based expiration. Previously defaulted to 600s / 300s. |
+| **`invalidate(tenant_id, resource?)`** | Now accepts an optional `resource` parameter (`"config"` or `"prompt"`) to target a single cache. When omitted, clears both caches (existing behavior). |
 
 ### Documentation
 

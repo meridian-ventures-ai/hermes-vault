@@ -147,14 +147,16 @@ export declare class HermesVault {
      */
     private invalidatePrompts;
     /**
-     * Clear all cached config and prompt entries for a tenant.
+     * Clear cached entries for a tenant.
      *
-     * Call this when the dashboard updates a tenant's config or prompts.
-     * The next {@link getConfig} / {@link getPrompt} call will re-fetch from Sentinel.
+     * When `resource` is provided, only the matching cache is cleared.
+     * When omitted, both config and prompt caches are cleared.
      *
      * @param tenantId - Tenant identifier to invalidate.
+     * @param resource - `"config"` or `"prompt"` to target a single cache,
+     *   or `undefined` to clear both (default).
      */
-    invalidate(tenantId: string): void;
+    invalidate(tenantId: string, resource?: "config" | "prompt"): void;
     /**
      * Update config and/or secrets for a tenant/service pair.
      *
