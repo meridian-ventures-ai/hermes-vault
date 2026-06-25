@@ -198,7 +198,8 @@ export declare class HermesVault {
      *
      * Invalidates the prompt cache for the operating tenant. Sentinel
      * enforces that the prompt belongs to the operating tenant resolved
-     * from the JWT / `X-Operating-Tenant-Id` header.
+     * from the JWT / `X-Operating-Tenant-Id` header. Default prompts
+     * (`tenant_id IS NULL`) can be versioned by any authenticated user.
      *
      * @param promptId - UUID of the parent prompt.
      * @param params - Version details.
@@ -232,16 +233,25 @@ export declare class HermesVault {
      */
     ensurePrompt(promptKey: string, tenantId?: string): Promise<EnsuredPrompt>;
     /**
-     * List all prompt slots for the authenticated user's tenant.
+     * List prompt slots, optionally scoped to defaults.
      *
-     * Requires JWT auth. The tenant is resolved from the JWT token.
-     * Optionally filter by service name.
+     * Without `tenantId`, lists prompts for the caller's operating tenant.
+     * Pass `"_default"` to list system-wide default/fallback prompts
+     * (`tenant_id IS NULL`).
      *
-     * @param service - Filter results to this service name, or `undefined` for all services.
+     * Requires JWT auth.
+     *
+     * @param options - Optional filters.
+     * @param options.service - Filter results to this service name.
+     * @param options.tenantId - `"_default"` to list default prompts, an explicit
+     *   tenant ID, or `undefined` to use the authenticated user's operating tenant.
      * @returns Array of PromptListItem entries.
      * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
      */
-    listPrompts(service?: string): Promise<PromptListItem[]>;
+    listPrompts(options?: {
+        service?: string;
+        tenantId?: string;
+    }): Promise<PromptListItem[]>;
     /**
      * Get full detail (including sections) for a single prompt version.
      *

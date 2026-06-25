@@ -416,7 +416,8 @@ class HermesVault:
 
         Invalidates the prompt cache for the operating tenant. Sentinel
         enforces that the prompt belongs to the operating tenant resolved
-        from the JWT / ``X-Operating-Tenant-Id`` header.
+        from the JWT / ``X-Operating-Tenant-Id`` header. Default prompts
+        (``tenant_id IS NULL``) can be versioned by any authenticated user.
 
         Args:
             prompt_id: UUID of the parent prompt.
@@ -504,15 +505,22 @@ class HermesVault:
         )
 
     def list_prompts(
-        self, service: str | None = None
+        self,
+        service: str | None = None,
+        tenant_id: str | None = None,
     ) -> list[PromptListItem]:
-        """List all prompt slots for the authenticated user's tenant.
+        """List prompt slots, optionally scoped to defaults.
 
-        Requires JWT auth. The tenant is resolved from the JWT token.
-        Optionally filter by service name.
+        Without ``tenant_id``, lists prompts for the caller's operating tenant.
+        Pass ``"_default"`` to list system-wide default/fallback prompts
+        (``tenant_id IS NULL``).
+
+        Requires JWT auth.
 
         Args:
             service: Filter results to this service name, or ``None`` for all services.
+            tenant_id: ``"_default"`` to list default prompts, an explicit tenant ID,
+                or ``None`` to use the authenticated user's operating tenant.
 
         Returns:
             List of PromptListItem entries.
@@ -520,9 +528,14 @@ class HermesVault:
         Raises:
             VaultAuthError: JWT is missing or invalid (401/403).
         """
-        path = "/api/v1/prompts"
+        params: list[str] = []
         if service is not None:
-            path += f"?service={service}"
+            params.append(f"service={service}")
+        if tenant_id is not None:
+            params.append(f"tenant_id={tenant_id}")
+        path = "/api/v1/prompts"
+        if params:
+            path += "?" + "&".join(params)
 
         data = self._request("GET", path)
         return [

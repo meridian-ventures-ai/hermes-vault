@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.1
+
+Default prompt CRUD support — browse and version system-wide fallback prompts.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`list_prompts(tenant_id?)` / `listPrompts({ tenantId? })`** | New optional `tenant_id` / `tenantId` parameter. Pass `"_default"` to list default/fallback prompts (`tenant_id IS NULL`). When omitted, lists prompts for the authenticated user's operating tenant (existing behavior). Python adds `tenant_id` as a keyword arg; TypeScript changes the signature from `listPrompts(service?)` to `listPrompts(options?)` accepting `{ service?, tenantId? }`. |
+| **`create_prompt_version` / `createPromptVersion`** | Default prompts (`tenant_id IS NULL`) can now be versioned by any authenticated dashboard user. No SDK signature change — the relaxed tenant check is server-side. |
+
+### Documentation
+
+- Updated `CONTRACT.md` — endpoint 8 (`GET /prompts`) now documents the `tenant_id` query param; endpoint 6 (`POST /prompts/{prompt_id}/versions`) notes default prompt support.
+- Updated `README.md` — added default prompt browsing examples for both SDKs.
+
+---
+
 ## 1.4.0
 
 Mutable access token for singleton dashboard clients, and no-TTL caching by default.

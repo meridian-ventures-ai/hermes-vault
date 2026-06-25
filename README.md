@@ -84,6 +84,9 @@ versions = vault.get_prompt_versions("sae_university", "system_prompt")
 # List all prompt slots for the tenant
 prompts = vault.list_prompts(service="phoenix")
 
+# List default/fallback prompts (tenant_id IS NULL)
+defaults = vault.list_prompts(service="phoenix", tenant_id="_default")
+
 # Get full version detail (including sections)
 detail = vault.get_version_detail(versions[0].id)
 
@@ -184,7 +187,10 @@ const draft = await vault.createPromptVersion(slot.id, {
 const versions = await vault.getPromptVersions("sae_university", "system_prompt");
 
 // List all prompt slots for the tenant
-const prompts = await vault.listPrompts("phoenix");
+const prompts = await vault.listPrompts({ service: "phoenix" });
+
+// List default/fallback prompts (tenant_id IS NULL)
+const defaults = await vault.listPrompts({ service: "phoenix", tenantId: "_default" });
 
 // Get full version detail (including sections)
 const detail = await vault.getVersionDetail(versions[0].id);

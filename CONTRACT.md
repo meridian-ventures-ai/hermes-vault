@@ -186,7 +186,7 @@ Get full version history for a prompt. Uses exact `tenant_id` match (no fallback
 
 Create a new prompt version.
 
-By default (`activate=true`), the new version is set as active and the previous active version is deactivated. Pass `activate=false` to create the version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag. Sentinel enforces that the prompt belongs to the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
+By default (`activate=true`), the new version is set as active and the previous active version is deactivated. Pass `activate=false` to create the version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag. Sentinel enforces that the prompt belongs to the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch). Default prompts (`tenant_id IS NULL`) can be versioned by any authenticated dashboard user.
 
 **Request** — `CreatePromptVersionRequest`:
 
@@ -254,9 +254,16 @@ Idempotently find or create a prompt slot. If a prompt with the given tenant/ser
 
 ### 8. `GET /api/v1/prompts`
 
-List all prompt slots for the authenticated user's tenant. Optionally filter by service.
+List prompt slots, optionally scoped to defaults.
 
-**Query params:** `service` (optional) — filter by service name.
+Without `tenant_id`, lists prompts for the caller's operating tenant. Pass `tenant_id=_default` to list system-wide default/fallback prompts (`tenant_id IS NULL`) — needed so the dashboard can browse and manage existing defaults.
+
+**Query params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `service` | `string` | No | Filter by service name |
+| `tenant_id` | `string` | No | `_default` to list default prompts (tenant_id IS NULL), an explicit tenant ID, or omit to use the authenticated user's operating tenant |
 
 **Response** — `PromptListItem[]`:
 
