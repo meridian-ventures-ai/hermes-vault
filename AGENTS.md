@@ -1,0 +1,4 @@
+- Always make sure after change, python and typescript SDKs remain the same
+- Update all documentation: AGENTS.md, CHANGELOG.md, CONTRACT.md, README.md, docstrings of all related functions
+- changes to pyproject.toml, package.json
+- always build the SDK before commiting changes

@@ -57,7 +57,8 @@ vault = HermesVault(
     service="phoenix",
 )
 
-# Set the active tenant (call again on tenant switch — cache is preserved)
+# Before each request, sync credentials from the session:
+vault.set_access_token("<REFRESHED_JWT_TOKEN>")
 vault.set_operating_tenant_id("sae_university")
 
 # Update config/secrets
@@ -157,7 +158,8 @@ const vault = new HermesVault({
   service: "phoenix",
 });
 
-// Set the active tenant (call again on tenant switch — cache is preserved)
+// Before each request, sync credentials from the session:
+vault.setAccessToken("<REFRESHED_JWT_TOKEN>");
 vault.setOperatingTenantId("sae_university");
 
 // Update config/secrets

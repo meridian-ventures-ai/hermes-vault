@@ -95,7 +95,7 @@ function snakeToCamelTopLevel(obj: Record<string, unknown>): Record<string, unkn
  */
 export class HermesVault {
   private readonly baseUrl: string;
-  private readonly authHeaders: Record<string, string>;
+  private authHeaders: Record<string, string>;
   private readonly service: string;
   private readonly isJwt: boolean;
   private operatingTenantId?: string;
@@ -146,6 +146,20 @@ export class HermesVault {
    */
   setOperatingTenantId(tenantId: string | undefined): void {
     this.operatingTenantId = tenantId;
+  }
+
+  /**
+   * Update the JWT token used for authentication.
+   *
+   * Call this when the token is refreshed so the existing instance
+   * picks up the new credentials without being recreated.
+   *
+   * @param token - Fresh JWT token, or `null` to clear.
+   */
+  setAccessToken(token: string | null): void {
+    if (token) {
+      this.authHeaders = { Authorization: `Bearer ${token}` };
+    }
   }
 
   private async request(

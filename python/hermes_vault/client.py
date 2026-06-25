@@ -57,13 +57,16 @@ class HermesVault:
         )
         config = vault.get_config("sae_university")
 
-    Example (dashboard mode)::
+    Example (dashboard mode — singleton with per-request credential sync)::
 
         vault = HermesVault(
             sentinel_url="http://localhost:8001",
             jwt_token="eyJhbGciOi...",
             service="phoenix",
         )
+
+        # Before each request, sync credentials from the session:
+        vault.set_access_token(current_jwt_token)
         vault.set_operating_tenant_id("sae_university")
         vault.update_config("sae_university", config={"voice": "nova"})
     """
@@ -106,15 +109,14 @@ class HermesVault:
         self._operating_tenant_id = operating_tenant_id
         self._is_jwt = jwt_token is not None
 
-        headers: dict[str, str] = {}
+        self._auth_headers: dict[str, str] = {}
         if internal_key:
-            headers["X-Internal-Key"] = internal_key
+            self._auth_headers["X-Internal-Key"] = internal_key
         else:
-            headers["Authorization"] = f"Bearer {jwt_token}"
+            self._auth_headers["Authorization"] = f"Bearer {jwt_token}"
 
         self._http = httpx.Client(
             base_url=sentinel_url.rstrip("/"),
-            headers=headers,
             timeout=30.0,
         )
         self._config_cache: TenantCache[TenantConfig] = TenantCache(
@@ -139,8 +141,20 @@ class HermesVault:
         """
         self._operating_tenant_id = tenant_id
 
+    def set_access_token(self, token: str | None) -> None:
+        """Update the JWT token used for authentication.
+
+        Call this when the token is refreshed so the existing instance
+        picks up the new credentials without being recreated.
+
+        Args:
+            token: Fresh JWT token, or ``None`` to clear.
+        """
+        if token:
+            self._auth_headers = {"Authorization": f"Bearer {token}"}
+
     def _request(self, method: str, path: str, json: dict | None = None) -> dict:
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {**self._auth_headers}
         if self._is_jwt and self._operating_tenant_id:
             headers["X-Operating-Tenant-Id"] = self._operating_tenant_id
 

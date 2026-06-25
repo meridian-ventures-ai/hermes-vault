@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.0
+
+Mutable access token for singleton dashboard clients.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`set_access_token` / `setAccessToken`** | New public method to update the JWT token at runtime without recreating the client. Enables a singleton vault client whose credentials are synced per-request from the session (e.g. `localStorage`). |
+| **Python auth headers** | Auth headers (`Authorization` / `X-Internal-Key`) are now stored as a mutable instance dict and merged per-request, matching the TypeScript SDK pattern. Previously baked into `httpx.Client` at construction. |
+
+### Documentation
+
+- Updated `README.md` — dashboard examples for both SDKs now show `set_access_token` / `setAccessToken` per-request credential sync.
+
+---
+
 ## 1.3.0
 
 Tenant-scoped cache invalidation, mutable operating tenant, and server-side tenant isolation enforcement.
