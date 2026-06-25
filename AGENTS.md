@@ -2,3 +2,5 @@
 - Update all documentation: AGENTS.md, CHANGELOG.md, CONTRACT.md, README.md, docstrings of all related functions
 - changes to pyproject.toml, package.json
 - always build the SDK before commiting changes
+- keep commit messages brief and short, but still info dense
+- always use commit_type: commit_description format

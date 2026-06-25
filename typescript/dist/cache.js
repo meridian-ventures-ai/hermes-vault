@@ -6,7 +6,7 @@ class TenantCache {
     ttlMs;
     maxSize;
     constructor(ttlSeconds, maxSize) {
-        this.ttlMs = ttlSeconds * 1000;
+        this.ttlMs = ttlSeconds !== null ? ttlSeconds * 1000 : null;
         this.maxSize = maxSize;
     }
     get(key) {
@@ -26,7 +26,7 @@ class TenantCache {
         this.store.delete(key);
         this.store.set(key, {
             data: value,
-            expiresAt: Date.now() + this.ttlMs,
+            expiresAt: this.ttlMs !== null ? Date.now() + this.ttlMs : Infinity,
         });
         // Evict oldest if over capacity
         while (this.store.size > this.maxSize) {

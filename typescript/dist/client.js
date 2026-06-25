@@ -77,8 +77,8 @@ class HermesVault {
             this.authHeaders = { Authorization: `Bearer ${options.jwtToken}` };
         }
         const maxCacheSize = options.maxCacheSize ?? 100;
-        this.configCache = new cache_1.TenantCache(options.configTtlSeconds ?? 600, maxCacheSize);
-        this.promptCache = new cache_1.TenantCache(options.promptTtlSeconds ?? 300, maxCacheSize);
+        this.configCache = new cache_1.TenantCache(options.configTtlSeconds ?? null, maxCacheSize);
+        this.promptCache = new cache_1.TenantCache(options.promptTtlSeconds ?? null, maxCacheSize);
     }
     /**
      * Set or clear the active tenant for write operations.

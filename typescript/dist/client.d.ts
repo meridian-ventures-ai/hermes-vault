@@ -17,10 +17,12 @@ export interface HermesVaultOptions {
      * Can be changed later via {@link HermesVault.setOperatingTenantId}.
      */
     operatingTenantId?: string;
-    /** Cache TTL for config entries in seconds. Default `600` (10 min). */
-    configTtlSeconds?: number;
-    /** Cache TTL for prompt entries in seconds. Default `300` (5 min). */
-    promptTtlSeconds?: number;
+    /** Cache TTL for config entries in seconds, or `null` for no expiration (default).
+     * Entries persist until explicitly invalidated or evicted by LRU. */
+    configTtlSeconds?: number | null;
+    /** Cache TTL for prompt entries in seconds, or `null` for no expiration (default).
+     * Entries persist until explicitly invalidated or evicted by LRU. */
+    promptTtlSeconds?: number | null;
     /** Max tenants kept in each LRU cache. Default `100`. */
     maxCacheSize?: number;
 }

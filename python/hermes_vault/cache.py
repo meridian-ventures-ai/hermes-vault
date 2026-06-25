@@ -17,7 +17,7 @@ class CacheEntry(Generic[T]):
 class TenantCache(Generic[T]):
     """Per-tenant TTL cache with LRU eviction."""
 
-    def __init__(self, ttl_seconds: int, max_size: int) -> None:
+    def __init__(self, ttl_seconds: int | None, max_size: int) -> None:
         self._store: OrderedDict[str, CacheEntry[T]] = OrderedDict()
         self._ttl_seconds = ttl_seconds
         self._max_size = max_size
@@ -37,7 +37,11 @@ class TenantCache(Generic[T]):
             del self._store[key]
         self._store[key] = CacheEntry(
             data=value,
-            expires_at=time.monotonic() + self._ttl_seconds,
+            expires_at=(
+                float("inf")
+                if self._ttl_seconds is None
+                else time.monotonic() + self._ttl_seconds
+            ),
         )
         while len(self._store) > self._max_size:
             self._store.popitem(last=False)

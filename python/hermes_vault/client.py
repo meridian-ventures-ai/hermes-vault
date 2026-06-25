@@ -78,8 +78,8 @@ class HermesVault:
         internal_key: str | None = None,
         jwt_token: str | None = None,
         operating_tenant_id: str | None = None,
-        config_ttl_seconds: int = 600,
-        prompt_ttl_seconds: int = 300,
+        config_ttl_seconds: int | None = None,
+        prompt_ttl_seconds: int | None = None,
         max_cache_size: int = 100,
     ) -> None:
         """Initialise the Vault client.
@@ -93,8 +93,12 @@ class HermesVault:
             jwt_token: Bearer token sent as ``Authorization`` header (dashboard auth).
             operating_tenant_id: Initial active tenant ID for JWT dashboard auth.
                 Can be changed later via ``set_operating_tenant_id``.
-            config_ttl_seconds: Cache TTL for config entries. Default ``600`` (10 min).
-            prompt_ttl_seconds: Cache TTL for prompt entries. Default ``300`` (5 min).
+            config_ttl_seconds: Cache TTL for config entries in seconds, or ``None``
+                for no expiration (default). Entries persist until explicitly
+                invalidated or evicted by LRU.
+            prompt_ttl_seconds: Cache TTL for prompt entries in seconds, or ``None``
+                for no expiration (default). Entries persist until explicitly
+                invalidated or evicted by LRU.
             max_cache_size: Max tenants kept in each LRU cache. Default ``100``.
 
         Raises:

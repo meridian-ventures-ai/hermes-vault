@@ -5,11 +5,11 @@ interface CacheEntry<T> {
 
 export class TenantCache<T> {
   private readonly store = new Map<string, CacheEntry<T>>();
-  private readonly ttlMs: number;
+  private readonly ttlMs: number | null;
   private readonly maxSize: number;
 
-  constructor(ttlSeconds: number, maxSize: number) {
-    this.ttlMs = ttlSeconds * 1000;
+  constructor(ttlSeconds: number | null, maxSize: number) {
+    this.ttlMs = ttlSeconds !== null ? ttlSeconds * 1000 : null;
     this.maxSize = maxSize;
   }
 
@@ -32,7 +32,7 @@ export class TenantCache<T> {
     this.store.delete(key);
     this.store.set(key, {
       data: value,
-      expiresAt: Date.now() + this.ttlMs,
+      expiresAt: this.ttlMs !== null ? Date.now() + this.ttlMs : Infinity,
     });
 
     // Evict oldest if over capacity

@@ -296,7 +296,7 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 ## Cache Behavior
 
 - **Lazy loading**: nothing fetched at startup. First request per tenant triggers a fetch.
-- **TTL**: configs default to 10 min, prompts to 5 min.
+- **No TTL by default**: cached entries persist indefinitely until explicitly invalidated or evicted by LRU. Pass `config_ttl_seconds` / `prompt_ttl_seconds` (Python) or `configTtlSeconds` / `promptTtlSeconds` (TypeScript) to enable time-based expiration.
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
 - **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.
 - **Tenant switch**: call `set_operating_tenant_id` / `setOperatingTenantId` instead of creating a new instance — the cache is preserved across switches.
