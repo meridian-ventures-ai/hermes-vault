@@ -1,0 +1,7 @@
+﻿{
+  "name": "@meridian-ventures/hermes-vault",
+  "version": "1.4.0",
+  "description": "Hermes Vault SDK — tenant config, secrets, and prompts via Sentinel",
+  "main": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts"
+}
