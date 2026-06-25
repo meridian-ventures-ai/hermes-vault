@@ -34,7 +34,16 @@ class HermesVault:
     - **JWT** (``Authorization: Bearer``) — for the dashboard (read + write).
 
     Read responses are cached in-memory with TTL + LRU eviction. Write methods
-    bypass and invalidate the cache automatically.
+    bypass and invalidate the cache automatically. When the operating tenant is
+    set (via constructor or ``set_operating_tenant_id``), prompt cache
+    invalidation is **tenant-scoped** (only the operating tenant's entries are
+    evicted). Without it, write methods fall back to clearing the entire prompt
+    cache.
+
+    A single client instance is designed to be **long-lived** and shared.
+    When the dashboard user switches tenants, call
+    ``set_operating_tenant_id`` rather than creating a new instance — this
+    preserves cached data for all tenants.
 
     The ``service`` parameter is set once at construction and used implicitly
     in every call.
@@ -55,6 +64,7 @@ class HermesVault:
             jwt_token="eyJhbGciOi...",
             service="phoenix",
         )
+        vault.set_operating_tenant_id("sae_university")
         vault.update_config("sae_university", config={"voice": "nova"})
     """
 
@@ -64,6 +74,7 @@ class HermesVault:
         service: str,
         internal_key: str | None = None,
         jwt_token: str | None = None,
+        operating_tenant_id: str | None = None,
         config_ttl_seconds: int = 600,
         prompt_ttl_seconds: int = 300,
         max_cache_size: int = 100,
@@ -77,6 +88,8 @@ class HermesVault:
             service: Service name used in all endpoint paths (e.g. ``"phoenix"``).
             internal_key: Value sent as ``X-Internal-Key`` header (service auth).
             jwt_token: Bearer token sent as ``Authorization`` header (dashboard auth).
+            operating_tenant_id: Initial active tenant ID for JWT dashboard auth.
+                Can be changed later via ``set_operating_tenant_id``.
             config_ttl_seconds: Cache TTL for config entries. Default ``600`` (10 min).
             prompt_ttl_seconds: Cache TTL for prompt entries. Default ``300`` (5 min).
             max_cache_size: Max tenants kept in each LRU cache. Default ``100``.
@@ -90,6 +103,8 @@ class HermesVault:
             raise ValueError("Provide only one of internal_key or jwt_token, not both")
 
         self._service = service
+        self._operating_tenant_id = operating_tenant_id
+        self._is_jwt = jwt_token is not None
 
         headers: dict[str, str] = {}
         if internal_key:
@@ -109,9 +124,28 @@ class HermesVault:
             prompt_ttl_seconds, max_cache_size
         )
 
+    def set_operating_tenant_id(self, tenant_id: str | None) -> None:
+        """Set or clear the active tenant for write operations.
+
+        Call this when the dashboard user switches tenants. The new value
+        is sent as the ``X-Operating-Tenant-Id`` header on subsequent
+        requests and used for targeted cache invalidation.
+
+        The cache is **not** cleared — cached data from all tenants remains
+        available.
+
+        Args:
+            tenant_id: Tenant identifier to operate as, or ``None`` to clear.
+        """
+        self._operating_tenant_id = tenant_id
+
     def _request(self, method: str, path: str, json: dict | None = None) -> dict:
+        headers: dict[str, str] = {}
+        if self._is_jwt and self._operating_tenant_id:
+            headers["X-Operating-Tenant-Id"] = self._operating_tenant_id
+
         try:
-            response = self._http.request(method, path, json=json)
+            response = self._http.request(method, path, json=json, headers=headers)
         except httpx.TimeoutException as exc:
             raise VaultConnectionError(f"Request timed out: {exc}") from exc
         except httpx.ConnectError as exc:
@@ -230,6 +264,17 @@ class HermesVault:
         self._prompt_cache.set(cache_key, prompt)
         return prompt
 
+    def _invalidate_prompts(self) -> None:
+        """Invalidate prompt cache entries for the operating tenant.
+
+        Uses targeted ``delete_prefix`` when ``operating_tenant_id`` is set,
+        otherwise falls back to clearing the entire prompt cache.
+        """
+        if self._operating_tenant_id:
+            self._prompt_cache.delete_prefix(self._operating_tenant_id)
+        else:
+            self._prompt_cache.clear()
+
     def invalidate(self, tenant_id: str) -> None:
         """Clear all cached config and prompt entries for a tenant.
 
@@ -256,6 +301,8 @@ class HermesVault:
 
         Sends a ``PATCH`` to Sentinel. Secrets are encrypted server-side
         before storage. Invalidates the config cache for this tenant.
+        Sentinel enforces that ``tenant_id`` matches the operating tenant
+        resolved from the JWT / ``X-Operating-Tenant-Id`` header.
 
         Args:
             tenant_id: Tenant identifier (e.g. ``"sae_university"``).
@@ -268,7 +315,7 @@ class HermesVault:
         Raises:
             VaultAuthError: JWT is missing or invalid (401/403).
             VaultNotFoundError: Tenant/service pair does not exist (404).
-            VaultHTTPError: Validation error or server error.
+            VaultHTTPError: Validation error, tenant mismatch (403), or server error.
         """
         body: dict[str, Any] = {}
         if config is not None:
@@ -343,7 +390,9 @@ class HermesVault:
         version. The first version of a prompt is always activated regardless
         of this flag.
 
-        Invalidates the prompt cache for all tenants associated with this prompt.
+        Invalidates the prompt cache for the operating tenant. Sentinel
+        enforces that the prompt belongs to the operating tenant resolved
+        from the JWT / ``X-Operating-Tenant-Id`` header.
 
         Args:
             prompt_id: UUID of the parent prompt.
@@ -360,7 +409,7 @@ class HermesVault:
         Raises:
             VaultAuthError: JWT is missing or invalid (401/403).
             VaultNotFoundError: Prompt ID does not exist (404).
-            VaultHTTPError: Validation error or server error.
+            VaultHTTPError: Validation error, tenant mismatch (403), or server error.
         """
         body: dict[str, Any] = {
             "sections": sections,
@@ -377,8 +426,7 @@ class HermesVault:
             f"/api/v1/prompts/{prompt_id}/versions",
             json=body,
         )
-        # Clear all prompt caches since we don't know the tenant_id from prompt_id
-        self._prompt_cache.clear()
+        self._invalidate_prompts()
 
         return CreatedPromptVersion(
             id=str(data["id"]),
@@ -397,6 +445,8 @@ class HermesVault:
 
         If a prompt with the given ``tenant_id``/``service``/``prompt_key``
         already exists, returns it. Otherwise creates a new empty prompt slot.
+        Sentinel enforces that ``tenant_id`` matches the operating tenant
+        resolved from the JWT / ``X-Operating-Tenant-Id`` header.
 
         Args:
             prompt_key: Prompt key (e.g. ``"system_prompt"``).
@@ -407,7 +457,7 @@ class HermesVault:
 
         Raises:
             VaultAuthError: JWT is missing or invalid (401/403).
-            VaultHTTPError: Validation error or server error.
+            VaultHTTPError: Validation error, tenant mismatch (403), or server error.
         """
         body: dict[str, Any] = {
             "service": self._service,
@@ -497,7 +547,8 @@ class HermesVault:
         """Set a specific version as the active version (rollback/promote).
 
         Deactivates the current active version and activates the specified
-        one. Clears all prompt caches. Requires JWT auth.
+        one. Invalidates the prompt cache for the operating tenant.
+        Requires JWT auth.
 
         Args:
             version_id: UUID of the version to activate.
@@ -513,7 +564,7 @@ class HermesVault:
         data = self._request(
             "PATCH", f"/api/v1/prompts/versions/{version_id}/activate"
         )
-        self._prompt_cache.clear()
+        self._invalidate_prompts()
 
         return PromptVersionDetail(
             id=str(data["id"]),
@@ -536,7 +587,8 @@ class HermesVault:
         """Update version_name and/or version_note for a prompt version.
 
         Does not modify the sections content — content changes require
-        creating a new version. Requires JWT auth.
+        creating a new version. Invalidates prompt cache for the operating
+        tenant. Requires JWT auth.
 
         Args:
             version_id: UUID of the version to update.
@@ -562,6 +614,8 @@ class HermesVault:
             f"/api/v1/prompts/versions/{version_id}",
             json=body,
         )
+        self._invalidate_prompts()
+
         return PromptVersionDetail(
             id=str(data["id"]),
             prompt_id=str(data["prompt_id"]),
@@ -579,7 +633,8 @@ class HermesVault:
 
         Cannot delete the last remaining version — delete the prompt instead.
         If the active version is deleted, the latest remaining version is
-        auto-activated. Clears all prompt caches. Requires JWT auth.
+        auto-activated. Invalidates the prompt cache for the operating tenant.
+        Requires JWT auth.
 
         Args:
             version_id: UUID of the version to delete.
@@ -590,12 +645,13 @@ class HermesVault:
             VaultHTTPError: Cannot delete last version, or server error.
         """
         self._request("DELETE", f"/api/v1/prompts/versions/{version_id}")
-        self._prompt_cache.clear()
+        self._invalidate_prompts()
 
     def delete_prompt(self, prompt_id: str) -> None:
         """Delete a prompt slot and all its versions.
 
-        Clears all prompt caches. Requires JWT auth.
+        Invalidates the prompt cache for the operating tenant.
+        Requires JWT auth.
 
         Args:
             prompt_id: UUID of the prompt to delete.
@@ -606,7 +662,7 @@ class HermesVault:
             VaultHTTPError: Server error.
         """
         self._request("DELETE", f"/api/v1/prompts/{prompt_id}")
-        self._prompt_cache.clear()
+        self._invalidate_prompts()
 
     # ------------------------------------------------------------------
     # Bulk load (Internal-Key auth, service startup)

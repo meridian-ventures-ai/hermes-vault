@@ -57,6 +57,9 @@ vault = HermesVault(
     service="phoenix",
 )
 
+# Set the active tenant (call again on tenant switch — cache is preserved)
+vault.set_operating_tenant_id("sae_university")
+
 # Update config/secrets
 vault.update_config("sae_university", config={"voice": "nova"}, secrets={"api_key": "sk-..."})
 
@@ -153,6 +156,9 @@ const vault = new HermesVault({
   jwtToken: "<JWT_TOKEN>",
   service: "phoenix",
 });
+
+// Set the active tenant (call again on tenant switch — cache is preserved)
+vault.setOperatingTenantId("sae_university");
 
 // Update config/secrets
 await vault.updateConfig("sae_university", {
@@ -290,4 +296,6 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 - **Lazy loading**: nothing fetched at startup. First request per tenant triggers a fetch.
 - **TTL**: configs default to 10 min, prompts to 5 min.
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
+- **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.
+- **Tenant switch**: call `set_operating_tenant_id` / `setOperatingTenantId` instead of creating a new instance — the cache is preserved across switches.
 - **`invalidate(tenant_id)`**: clears all cache entries for that tenant immediately.

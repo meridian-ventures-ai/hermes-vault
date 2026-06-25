@@ -32,8 +32,8 @@ export interface HermesVaultOptions {
   internalKey?: string;
   /** Bearer token sent as the `Authorization` header (dashboard auth). */
   jwtToken?: string;
-  /** For JWT dashboard auth with SERVICE or multi-tenant users: the active tenant id.
-   * Sent as `X-Operating-Tenant-Id` header so Sentinel can resolve tenant for list/activate etc.
+  /** Initial active tenant ID for JWT dashboard auth.
+   * Can be changed later via {@link HermesVault.setOperatingTenantId}.
    */
   operatingTenantId?: string;
   /** Cache TTL for config entries in seconds. Default `600` (10 min). */
@@ -61,7 +61,16 @@ function snakeToCamelTopLevel(obj: Record<string, unknown>): Record<string, unkn
  * - **JWT** (`Authorization: Bearer`) — for the dashboard (read + write).
  *
  * Read responses are cached in-memory with TTL + LRU eviction. Write methods
- * bypass and invalidate the cache automatically.
+ * bypass and invalidate the cache automatically. When the operating tenant is
+ * set (via constructor or {@link setOperatingTenantId}), prompt cache
+ * invalidation is **tenant-scoped** (only the operating tenant's entries are
+ * evicted). Without it, write methods fall back to clearing the entire prompt
+ * cache.
+ *
+ * A single client instance is designed to be **long-lived** and shared.
+ * When the dashboard user switches tenants, call
+ * {@link setOperatingTenantId} rather than creating a new instance — this
+ * preserves cached data for all tenants.
  *
  * @example Service mode
  * ```ts
@@ -80,6 +89,7 @@ function snakeToCamelTopLevel(obj: Record<string, unknown>): Record<string, unkn
  *   jwtToken: "eyJhbGciOi...",
  *   service: "phoenix",
  * });
+ * vault.setOperatingTenantId("sae_university");
  * await vault.updateConfig("sae_university", { config: { voice: "nova" } });
  * ```
  */
@@ -87,7 +97,8 @@ export class HermesVault {
   private readonly baseUrl: string;
   private readonly authHeaders: Record<string, string>;
   private readonly service: string;
-  private readonly operatingTenantId?: string;
+  private readonly isJwt: boolean;
+  private operatingTenantId?: string;
   private readonly configCache: TenantCache<TenantConfig>;
   private readonly promptCache: TenantCache<ActivePrompt>;
 
@@ -102,6 +113,7 @@ export class HermesVault {
     this.baseUrl = options.sentinelUrl.replace(/\/+$/, "");
     this.service = options.service;
     this.operatingTenantId = options.operatingTenantId;
+    this.isJwt = !!options.jwtToken;
 
     if (options.internalKey) {
       this.authHeaders = { "X-Internal-Key": options.internalKey };
@@ -120,6 +132,22 @@ export class HermesVault {
     );
   }
 
+  /**
+   * Set or clear the active tenant for write operations.
+   *
+   * Call this when the dashboard user switches tenants. The new value
+   * is sent as the `X-Operating-Tenant-Id` header on subsequent
+   * requests and used for targeted cache invalidation.
+   *
+   * The cache is **not** cleared — cached data from all tenants remains
+   * available.
+   *
+   * @param tenantId - Tenant identifier to operate as, or `undefined` to clear.
+   */
+  setOperatingTenantId(tenantId: string | undefined): void {
+    this.operatingTenantId = tenantId;
+  }
+
   private async request(
     method: string,
     path: string,
@@ -128,7 +156,7 @@ export class HermesVault {
     let response: Response;
     try {
       const headers: Record<string, string> = { ...this.authHeaders };
-      if (this.operatingTenantId && "Authorization" in headers) {
+      if (this.isJwt && this.operatingTenantId) {
         headers["X-Operating-Tenant-Id"] = this.operatingTenantId;
       }
       const init: RequestInit = {
@@ -260,6 +288,20 @@ export class HermesVault {
   }
 
   /**
+   * Invalidate prompt cache entries for the operating tenant.
+   *
+   * Uses targeted `deletePrefix` when `operatingTenantId` is set,
+   * otherwise falls back to clearing the entire prompt cache.
+   */
+  private invalidatePrompts(): void {
+    if (this.operatingTenantId) {
+      this.promptCache.deletePrefix(this.operatingTenantId);
+    } else {
+      this.promptCache.clear();
+    }
+  }
+
+  /**
    * Clear all cached config and prompt entries for a tenant.
    *
    * Call this when the dashboard updates a tenant's config or prompts.
@@ -281,13 +323,15 @@ export class HermesVault {
    *
    * Sends a `PATCH` to Sentinel. Secrets are encrypted server-side
    * before storage. Invalidates the config cache for this tenant.
+   * Sentinel enforces that `tenantId` matches the operating tenant
+   * resolved from the JWT / `X-Operating-Tenant-Id` header.
    *
    * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
    * @param updates - Object with optional `config` and/or `secrets` to merge.
    * @returns Updated TenantConfig with merged values.
    * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
    * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
-   * @throws {@link VaultHttpError} Validation error or server error.
+   * @throws {@link VaultHttpError} Validation error, tenant mismatch (403), or server error.
    */
   async updateConfig(
     tenantId: string,
@@ -354,14 +398,16 @@ export class HermesVault {
    * the version as a draft without changing the currently active version. The
    * first version of a prompt is always activated regardless of this flag.
    *
-   * Clears all prompt caches.
+   * Invalidates the prompt cache for the operating tenant. Sentinel
+   * enforces that the prompt belongs to the operating tenant resolved
+   * from the JWT / `X-Operating-Tenant-Id` header.
    *
    * @param promptId - UUID of the parent prompt.
    * @param params - Version details.
    * @returns CreatedPromptVersion with the new version details.
    * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
    * @throws {@link VaultNotFoundError} Prompt ID does not exist (404).
-   * @throws {@link VaultHttpError} Validation error or server error.
+   * @throws {@link VaultHttpError} Validation error, tenant mismatch (403), or server error.
    */
   async createPromptVersion(
     promptId: string,
@@ -388,7 +434,7 @@ export class HermesVault {
       `/api/v1/prompts/${promptId}/versions`,
       body,
     );
-    this.promptCache.clear();
+    this.invalidatePrompts();
 
     const data = this.convertTopLevel(raw);
     return {
@@ -405,12 +451,14 @@ export class HermesVault {
    *
    * If a prompt with the given `tenantId`/`service`/`promptKey` already
    * exists, returns it. Otherwise creates a new empty prompt slot.
+   * Sentinel enforces that `tenantId` matches the operating tenant
+   * resolved from the JWT / `X-Operating-Tenant-Id` header.
    *
    * @param promptKey - Prompt key (e.g. `"system_prompt"`).
    * @param tenantId - Tenant identifier, or `undefined` for a default/fallback prompt.
    * @returns EnsuredPrompt with `.created` indicating if it was newly created.
    * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
-   * @throws {@link VaultHttpError} Validation error or server error.
+   * @throws {@link VaultHttpError} Validation error, tenant mismatch (403), or server error.
    */
   async ensurePrompt(
     promptKey: string,
@@ -496,7 +544,8 @@ export class HermesVault {
    * Set a specific version as the active version (rollback/promote).
    *
    * Deactivates the current active version and activates the specified
-   * one. Clears all prompt caches. Requires JWT auth.
+   * one. Invalidates the prompt cache for the operating tenant.
+   * Requires JWT auth.
    *
    * @param versionId - UUID of the version to activate.
    * @returns PromptVersionDetail of the newly activated version.
@@ -509,7 +558,7 @@ export class HermesVault {
       "PATCH",
       `/api/v1/prompts/versions/${versionId}/activate`,
     );
-    this.promptCache.clear();
+    this.invalidatePrompts();
 
     const data = this.convertTopLevel(raw);
     return {
@@ -529,7 +578,8 @@ export class HermesVault {
    * Update version_name and/or version_note for a prompt version.
    *
    * Does not modify the sections content — content changes require
-   * creating a new version. Requires JWT auth.
+   * creating a new version. Invalidates the prompt cache for the
+   * operating tenant. Requires JWT auth.
    *
    * @param versionId - UUID of the version to update.
    * @param updates - Object with optional `versionName` and/or `versionNote`.
@@ -554,6 +604,8 @@ export class HermesVault {
       `/api/v1/prompts/versions/${versionId}`,
       body,
     );
+    this.invalidatePrompts();
+
     const data = this.convertTopLevel(raw);
     return {
       id: String(data.id),
@@ -573,7 +625,8 @@ export class HermesVault {
    *
    * Cannot delete the last remaining version — delete the prompt instead.
    * If the active version is deleted, the latest remaining version is
-   * auto-activated. Clears all prompt caches. Requires JWT auth.
+   * auto-activated. Invalidates the prompt cache for the operating tenant.
+   * Requires JWT auth.
    *
    * @param versionId - UUID of the version to delete.
    * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
@@ -582,13 +635,14 @@ export class HermesVault {
    */
   async deleteVersion(versionId: string): Promise<void> {
     await this.request("DELETE", `/api/v1/prompts/versions/${versionId}`);
-    this.promptCache.clear();
+    this.invalidatePrompts();
   }
 
   /**
    * Delete a prompt slot and all its versions.
    *
-   * Clears all prompt caches. Requires JWT auth.
+   * Invalidates the prompt cache for the operating tenant.
+   * Requires JWT auth.
    *
    * @param promptId - UUID of the prompt to delete.
    * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
@@ -597,7 +651,7 @@ export class HermesVault {
    */
   async deletePrompt(promptId: string): Promise<void> {
     await this.request("DELETE", `/api/v1/prompts/${promptId}`);
-    this.promptCache.clear();
+    this.invalidatePrompts();
   }
 
   // ------------------------------------------------------------------

@@ -15,6 +15,14 @@ The SDK supports two authentication modes:
 
 Read endpoints accept either auth mode. Write endpoints require JWT.
 
+### Tenant Isolation
+
+Write endpoints enforce tenant isolation via the `X-Operating-Tenant-Id` header. When using JWT auth, the SDK sends this header so Sentinel can resolve the operating tenant. Sentinel validates that the resource being modified belongs to the operating tenant and returns `403` if there is a mismatch.
+
+| Header | Description |
+|---|---|
+| `X-Operating-Tenant-Id` | Active tenant ID for the dashboard session. Sent automatically by the SDK when `operatingTenantId` / `operating_tenant_id` is set at construction. |
+
 ---
 
 ## Read Endpoints (`X-Internal-Key` or JWT)
@@ -126,7 +134,7 @@ Bulk-load all configs, secrets, and active prompts for a service across every te
 
 ### 4. `PATCH /api/v1/vault/configs/{tenant_id}/{service}`
 
-Update config and/or secrets for a tenant/service pair. Secrets are encrypted server-side before storage.
+Update config and/or secrets for a tenant/service pair. Secrets are encrypted server-side before storage. Sentinel enforces that `tenant_id` matches the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
 
 **Request** — `ConfigUpdateRequest`:
 
@@ -178,7 +186,7 @@ Get full version history for a prompt. Uses exact `tenant_id` match (no fallback
 
 Create a new prompt version.
 
-By default (`activate=true`), the new version is set as active and the previous active version is deactivated. Pass `activate=false` to create the version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag.
+By default (`activate=true`), the new version is set as active and the previous active version is deactivated. Pass `activate=false` to create the version as a draft without changing the currently active version. The first version of a prompt is always activated regardless of this flag. Sentinel enforces that the prompt belongs to the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
 
 **Request** — `CreatePromptVersionRequest`:
 
@@ -214,7 +222,7 @@ By default (`activate=true`), the new version is set as active and the previous 
 
 ### 7. `POST /api/v1/prompts/ensure`
 
-Idempotently find or create a prompt slot. If a prompt with the given tenant/service/key already exists, returns it.
+Idempotently find or create a prompt slot. If a prompt with the given tenant/service/key already exists, returns it. Sentinel enforces that `tenant_id` matches the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
 
 **Request** — `EnsurePromptRequest`:
 

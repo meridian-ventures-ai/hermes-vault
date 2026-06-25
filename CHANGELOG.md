@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0
+
+Tenant-scoped cache invalidation, mutable operating tenant, and server-side tenant isolation enforcement.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`set_operating_tenant_id` / `setOperatingTenantId`** | New public method to change the active tenant at runtime without creating a new instance. Cache is preserved across switches. |
+| **`operating_tenant_id` / `operatingTenantId`** | Can be passed at construction or changed later via the setter. Sent as `X-Operating-Tenant-Id` header per-request. Used for targeted cache invalidation. |
+| **Prompt cache invalidation** | All write methods (`createPromptVersion`, `activateVersion`, `updateVersionMetadata`, `deleteVersion`, `deletePrompt`) now use targeted `deletePrefix(operatingTenantId)` instead of `clear()`. Falls back to `clear()` when operating tenant is not set. |
+| **`updateVersionMetadata`** | Now invalidates the prompt cache (previously did no invalidation, leaving stale `versionName` in cache). |
+| **Python `_request`** | `X-Operating-Tenant-Id` header now injected per-request (was baked into `httpx.Client` headers at construction). |
+
+### Tenant isolation (Sentinel)
+
+Write endpoints now enforce tenant isolation via `X-Operating-Tenant-Id`:
+- `PATCH /vault/configs/{tenant_id}/{service}` — 403 if `tenant_id` does not match the operating tenant.
+- `POST /prompts/{prompt_id}/versions` — 403 if the prompt does not belong to the operating tenant.
+- `POST /prompts/ensure` — 403 if `body.tenant_id` does not match the operating tenant.
+
+### Documentation
+
+- Updated `CONTRACT.md` — added Tenant Isolation section, updated affected endpoint descriptions.
+- Updated `README.md` — dashboard examples now include `operating_tenant_id` / `operatingTenantId`, cache behavior section updated.
+
+---
+
 ## 1.2.0
 
 Added support for creating prompt versions as drafts.
