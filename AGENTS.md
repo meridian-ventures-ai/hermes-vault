@@ -1,6 +1,7 @@
-- Always make sure after change, python and typescript SDKs remain the same
+- Always make sure after any change is made, python and typescript SDKs remain the same
 - Update all documentation: AGENTS.md, CHANGELOG.md, CONTRACT.md, README.md, docstrings of all related functions
-- changes to pyproject.toml, package.json
-- always build the SDK before commiting changes
+- corresponding changes to pyproject.toml, package.json are done
+- always build the typescript SDK before commiting changes
 - keep commit messages brief and short, but still info dense
-- always use commit_type: commit_description format
+- always use commit_type: commit_description format (some commit types are feat, chore, build, fix, refactor, style)
+- versioning is MAJOR.MINOR.PATCH, you can bump version based on your judgement, make sure versions are same for typescript and python and are bumped in pyproject.toml and package.json as well and they are always the same.
