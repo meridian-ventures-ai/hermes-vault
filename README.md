@@ -111,7 +111,8 @@ vault = HermesVault(
 )
 
 # Preload all tenants at startup (one HTTP call)
-vault.preload()
+bulk = vault.preload()
+print(f"Pre-warmed {len(bulk.tenant_ids())} tenants: {bulk.tenant_ids()}")
 
 # Now use normal SDK methods — all cache hits, zero round-trips
 config = vault.get_config("sae_university")
@@ -216,7 +217,8 @@ const vault = new HermesVault({
 });
 
 // Preload all tenants at startup (one HTTP call)
-await vault.preload();
+const bulk = await vault.preload();
+console.log(`Pre-warmed ${bulk.tenantIds().size} tenants:`, bulk.tenantIds());
 
 // Now use normal SDK methods — all cache hits, zero round-trips
 const config = await vault.getConfig("sae_university");

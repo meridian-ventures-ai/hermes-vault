@@ -1,4 +1,4 @@
-import { ActivePrompt, CreatedPromptVersion, EnsuredPrompt, PromptListItem, PromptVersion, PromptVersionDetail, TenantConfig } from "./models";
+import { ActivePrompt, BulkServiceData, CreatedPromptVersion, EnsuredPrompt, PromptListItem, PromptVersion, PromptVersionDetail, TenantConfig } from "./models";
 /**
  * Configuration options for the {@link HermesVault} client.
  *
@@ -330,8 +330,13 @@ export declare class HermesVault {
      * {@link getSecret}, and {@link getPrompt} afterward (all cache hits,
      * zero round-trips).
      *
+     * Returns the bulk data for logging or inspection (e.g. to check which
+     * tenants were loaded). Use {@link BulkServiceData.tenantIds} on the
+     * result to get the set of pre-warmed tenant IDs.
+     *
+     * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
      * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
      * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
      */
-    preload(): Promise<void>;
+    preload(): Promise<BulkServiceData>;
 }

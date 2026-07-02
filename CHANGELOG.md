@@ -8,13 +8,8 @@ Bulk preload as cache-warming — `get_bulk_config()` / `getBulkConfig()` replac
 
 | Area | Change |
 |---|---|
-| **`get_bulk_config()` / `getBulkConfig()` → `preload()`** | Renamed method. Now returns `None` / `void` instead of `BulkServiceData`. Fetches all tenant configs, secrets, and active prompts in a single HTTP call and populates the config and prompt caches internally. Callers use `getConfig()`, `getPrompt()`, `getSecret()` afterward — all cache hits, zero round-trips. |
-
-### Removed (both SDKs)
-
-| Area | Change |
-|---|---|
-| **`BulkPromptEntry`, `BulkTenantEntry`, `BulkServiceData`** | Removed from public API (models, exports). The bulk response is now consumed internally by `preload()` and never exposed to callers. |
+| **`get_bulk_config()` / `getBulkConfig()` → `preload()`** | Renamed method. Fetches all tenant configs, secrets, and active prompts in a single HTTP call, populates the config and prompt caches internally, and returns `BulkServiceData` for logging/inspection. Callers use `getConfig()`, `getPrompt()`, `getSecret()` afterward — all cache hits, zero round-trips. |
+| **`BulkServiceData.tenant_ids()` / `tenantIds()`** | New method returning `set[str]` / `Set<string>` of pre-warmed tenant IDs. Useful for startup logging. |
 
 ### Documentation
 

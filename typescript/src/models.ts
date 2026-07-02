@@ -130,3 +130,56 @@ export interface PromptVersionDetail {
   createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Bulk load models (service startup)
+// ---------------------------------------------------------------------------
+
+/** Single active prompt within the bulk service response. */
+export interface BulkPromptEntry {
+  /** Active version number. */
+  version: number;
+  /** Human-readable version label. */
+  versionName: string;
+  /** Prompt content sections. */
+  sections: Record<string, unknown>;
+}
+
+/** All data for one tenant within the bulk service response. */
+export interface BulkTenantEntry {
+  /** Whether the tenant/service pair is active. */
+  enabled: boolean;
+  /** Non-sensitive operational settings. */
+  config: Record<string, unknown>;
+  /** Decrypted secret key-value pairs. */
+  secrets: Record<string, unknown>;
+  /** Active prompts keyed by prompt_key. */
+  prompts: Record<string, BulkPromptEntry>;
+}
+
+/**
+ * Bulk-loaded configs, secrets, and active prompts for all tenants of a service.
+ *
+ * Returned by {@link HermesVault.preload} for service startup. Can be used
+ * for logging or inspection without disturbing the pre-warmed cache.
+ */
+export class BulkServiceData {
+  /** Service name. */
+  readonly service: string;
+  /** Per-tenant data keyed by tenant_id. */
+  readonly tenants: Record<string, BulkTenantEntry>;
+
+  constructor(service: string, tenants: Record<string, BulkTenantEntry>) {
+    this.service = service;
+    this.tenants = tenants;
+  }
+
+  /**
+   * Return the set of tenant IDs included in the bulk response.
+   *
+   * Useful for logging how many tenants were pre-warmed at startup.
+   */
+  tenantIds(): Set<string> {
+    return new Set(Object.keys(this.tenants));
+  }
+}
+

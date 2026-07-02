@@ -7,6 +7,9 @@ export {
   CreatedPromptVersion,
   EnsuredPrompt,
   PromptListItem,
+  BulkPromptEntry,
+  BulkTenantEntry,
+  BulkServiceData,
 } from "./models";
 export {
   VaultError,

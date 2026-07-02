@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HermesVault = void 0;
 const cache_1 = require("./cache");
 const exceptions_1 = require("./exceptions");
+const models_1 = require("./models");
 function snakeToCamelTopLevel(obj) {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
@@ -562,6 +563,11 @@ class HermesVault {
      * {@link getSecret}, and {@link getPrompt} afterward (all cache hits,
      * zero round-trips).
      *
+     * Returns the bulk data for logging or inspection (e.g. to check which
+     * tenants were loaded). Use {@link BulkServiceData.tenantIds} on the
+     * result to get the set of pre-warmed tenant IDs.
+     *
+     * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
      * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
      * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
      */
@@ -570,6 +576,7 @@ class HermesVault {
         const data = raw;
         const rawTenants = (data.tenants ?? {});
         const serviceName = data.service;
+        const bulkTenants = {};
         for (const [tid, tdata] of Object.entries(rawTenants)) {
             const config = {
                 tenantId: tid,
@@ -580,6 +587,7 @@ class HermesVault {
             };
             this.configCache.set(tid, config);
             const rawPrompts = (tdata.prompts ?? {});
+            const prompts = {};
             for (const [pkey, pdata] of Object.entries(rawPrompts)) {
                 const pd = this.convertTopLevel(pdata);
                 const prompt = {
@@ -592,8 +600,20 @@ class HermesVault {
                     sections: pd.sections ?? {},
                 };
                 this.promptCache.set(`${tid}:${pkey}`, prompt);
+                prompts[pkey] = {
+                    version: pd.version,
+                    versionName: pd.versionName,
+                    sections: pd.sections ?? {},
+                };
             }
+            bulkTenants[tid] = {
+                enabled: tdata.enabled,
+                config: tdata.config ?? {},
+                secrets: tdata.secrets ?? {},
+                prompts,
+            };
         }
+        return new models_1.BulkServiceData(serviceName, bulkTenants);
     }
 }
 exports.HermesVault = HermesVault;

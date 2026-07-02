@@ -172,3 +172,66 @@ class PromptVersionDetail:
     is_active: bool = False
     created_by: int | None = None
     created_at: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Bulk load models (service startup)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BulkPromptEntry:
+    """Single active prompt within the bulk service response.
+
+    Attributes:
+        version: Active version number.
+        version_name: Human-readable version label.
+        sections: Prompt content sections.
+    """
+
+    version: int
+    version_name: str
+    sections: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BulkTenantEntry:
+    """All data for one tenant within the bulk service response.
+
+    Attributes:
+        enabled: Whether the tenant/service pair is active.
+        config: Non-sensitive operational settings.
+        secrets: Decrypted secret key-value pairs.
+        prompts: Active prompts keyed by prompt_key.
+    """
+
+    enabled: bool
+    config: dict[str, Any] = field(default_factory=dict)
+    secrets: dict[str, Any] = field(default_factory=dict)
+    prompts: dict[str, BulkPromptEntry] = field(default_factory=dict)
+
+
+@dataclass
+class BulkServiceData:
+    """Bulk-loaded configs, secrets, and active prompts for all tenants of a service.
+
+    Returned by :meth:`HermesVault.preload` for service startup. Can be used
+    for logging or inspection without disturbing the pre-warmed cache.
+
+    Attributes:
+        service: Service name.
+        tenants: Per-tenant data keyed by tenant_id.
+    """
+
+    service: str
+    tenants: dict[str, BulkTenantEntry] = field(default_factory=dict)
+
+    def tenant_ids(self) -> set[str]:
+        """Return the set of tenant IDs included in the bulk response.
+
+        Useful for logging how many tenants were pre-warmed at startup.
+
+        Returns:
+            Set of tenant identifier strings.
+        """
+        return set(self.tenants.keys())

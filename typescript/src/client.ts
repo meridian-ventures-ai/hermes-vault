@@ -7,6 +7,9 @@ import {
 } from "./exceptions";
 import {
   ActivePrompt,
+  BulkPromptEntry,
+  BulkServiceData,
+  BulkTenantEntry,
   CreatedPromptVersion,
   EnsuredPrompt,
   PromptListItem,
@@ -701,10 +704,15 @@ export class HermesVault {
    * {@link getSecret}, and {@link getPrompt} afterward (all cache hits,
    * zero round-trips).
    *
+   * Returns the bulk data for logging or inspection (e.g. to check which
+   * tenants were loaded). Use {@link BulkServiceData.tenantIds} on the
+   * result to get the set of pre-warmed tenant IDs.
+   *
+   * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
    * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
    * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
    */
-  async preload(): Promise<void> {
+  async preload(): Promise<BulkServiceData> {
     const raw = await this.request(
       "GET",
       `/api/v1/vault/configs/bulk/${this.service}`,
@@ -712,6 +720,7 @@ export class HermesVault {
     const data = raw as Record<string, unknown>;
     const rawTenants = (data.tenants ?? {}) as Record<string, Record<string, unknown>>;
     const serviceName = data.service as string;
+    const bulkTenants: Record<string, BulkTenantEntry> = {};
 
     for (const [tid, tdata] of Object.entries(rawTenants)) {
       const config: TenantConfig = {
@@ -724,6 +733,7 @@ export class HermesVault {
       this.configCache.set(tid, config);
 
       const rawPrompts = (tdata.prompts ?? {}) as Record<string, Record<string, unknown>>;
+      const prompts: Record<string, BulkPromptEntry> = {};
       for (const [pkey, pdata] of Object.entries(rawPrompts)) {
         const pd = this.convertTopLevel(pdata);
         const prompt: ActivePrompt = {
@@ -736,7 +746,21 @@ export class HermesVault {
           sections: (pd.sections as Record<string, unknown>) ?? {},
         };
         this.promptCache.set(`${tid}:${pkey}`, prompt);
+        prompts[pkey] = {
+          version: pd.version as number,
+          versionName: pd.versionName as string,
+          sections: (pd.sections as Record<string, unknown>) ?? {},
+        };
       }
+
+      bulkTenants[tid] = {
+        enabled: tdata.enabled as boolean,
+        config: (tdata.config as Record<string, unknown>) ?? {},
+        secrets: (tdata.secrets as Record<string, unknown>) ?? {},
+        prompts,
+      };
     }
+
+    return new BulkServiceData(serviceName, bulkTenants);
   }
 }
