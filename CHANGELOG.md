@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0
+
+Bulk preload as cache-warming — `get_bulk_config()` / `getBulkConfig()` replaced with `preload()`.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`get_bulk_config()` / `getBulkConfig()` → `preload()`** | Renamed method. Now returns `None` / `void` instead of `BulkServiceData`. Fetches all tenant configs, secrets, and active prompts in a single HTTP call and populates the config and prompt caches internally. Callers use `getConfig()`, `getPrompt()`, `getSecret()` afterward — all cache hits, zero round-trips. |
+
+### Removed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`BulkPromptEntry`, `BulkTenantEntry`, `BulkServiceData`** | Removed from public API (models, exports). The bulk response is now consumed internally by `preload()` and never exposed to callers. |
+
+### Documentation
+
+- Updated `CONTRACT.md` — endpoint 3 now notes that the SDK uses it internally for `preload()` cache warming.
+- Updated `README.md` — rewrote bulk load examples for both SDKs; added `preload()` to Cache Behavior section.
+
+---
+
 ## 1.4.1
 
 Default prompt CRUD support — browse and version system-wide fallback prompts.

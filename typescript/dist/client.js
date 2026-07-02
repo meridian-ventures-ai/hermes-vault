@@ -551,46 +551,49 @@ class HermesVault {
         this.invalidatePrompts();
     }
     // ------------------------------------------------------------------
-    // Bulk load (Internal-Key auth, service startup)
+    // Bulk preload (Internal-Key auth, service startup)
     // ------------------------------------------------------------------
     /**
-     * Bulk-load all configs, secrets, and active prompts for this service.
+     * Preload all tenant configs, secrets, and active prompts into cache.
      *
-     * Returns everything the service needs to operate across all tenants
-     * in a single HTTP call. Designed for service startup to avoid
-     * per-tenant round-trips.
+     * Fetches everything the service needs across all tenants in a single
+     * HTTP call and populates the config and prompt caches. Designed for
+     * service startup — call once, then use {@link getConfig},
+     * {@link getSecret}, and {@link getPrompt} afterward (all cache hits,
+     * zero round-trips).
      *
-     * The result is **not cached** — call this once at startup and store
-     * the result yourself.
-     *
-     * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
      * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
      * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
      */
-    async getBulkConfig() {
+    async preload() {
         const raw = await this.request("GET", `/api/v1/vault/configs/bulk/${this.service}`);
         const data = raw;
         const rawTenants = (data.tenants ?? {});
-        const tenants = {};
+        const serviceName = data.service;
         for (const [tid, tdata] of Object.entries(rawTenants)) {
+            const config = {
+                tenantId: tid,
+                service: serviceName,
+                enabled: tdata.enabled,
+                config: tdata.config ?? {},
+                secrets: tdata.secrets ?? {},
+            };
+            this.configCache.set(tid, config);
             const rawPrompts = (tdata.prompts ?? {});
-            const prompts = {};
             for (const [pkey, pdata] of Object.entries(rawPrompts)) {
                 const pd = this.convertTopLevel(pdata);
-                prompts[pkey] = {
+                const prompt = {
+                    promptId: "",
+                    tenantId: tid,
+                    service: serviceName,
+                    promptKey: pkey,
                     version: pd.version,
                     versionName: pd.versionName,
                     sections: pd.sections ?? {},
                 };
+                this.promptCache.set(`${tid}:${pkey}`, prompt);
             }
-            tenants[tid] = {
-                enabled: tdata.enabled,
-                config: tdata.config ?? {},
-                secrets: tdata.secrets ?? {},
-                prompts,
-            };
         }
-        return { service: data.service, tenants };
     }
 }
 exports.HermesVault = HermesVault;

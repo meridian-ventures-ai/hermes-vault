@@ -111,30 +111,3 @@ export interface PromptVersionDetail {
     /** ISO-8601 timestamp of creation. */
     createdAt: string;
 }
-/** Single active prompt within the bulk service response. */
-export interface BulkPromptEntry {
-    /** Active version number. */
-    version: number;
-    /** Human-readable version label. */
-    versionName: string;
-    /** Prompt content sections. */
-    sections: Record<string, unknown>;
-}
-/** All data for one tenant within the bulk service response. */
-export interface BulkTenantEntry {
-    /** Whether the tenant/service pair is active. */
-    enabled: boolean;
-    /** Non-sensitive operational settings. */
-    config: Record<string, unknown>;
-    /** Decrypted secret key-value pairs. */
-    secrets: Record<string, unknown>;
-    /** Active prompts keyed by prompt_key. */
-    prompts: Record<string, BulkPromptEntry>;
-}
-/** Bulk-loaded configs, secrets, and active prompts for all tenants of a service. */
-export interface BulkServiceData {
-    /** Service name. */
-    service: string;
-    /** Per-tenant data keyed by tenant_id. */
-    tenants: Record<string, BulkTenantEntry>;
-}

@@ -1,6 +1,6 @@
 [project]
 name = "hermes-vault"
-version = "1.4.1"
+version = "1.5.0"
 description = "Hermes Vault SDK — tenant config, secrets, and prompts via Sentinel"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27,<1"]

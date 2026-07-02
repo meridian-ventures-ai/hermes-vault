@@ -7,9 +7,6 @@ import {
 } from "./exceptions";
 import {
   ActivePrompt,
-  BulkPromptEntry,
-  BulkServiceData,
-  BulkTenantEntry,
   CreatedPromptVersion,
   EnsuredPrompt,
   PromptListItem,
@@ -692,53 +689,54 @@ export class HermesVault {
   }
 
   // ------------------------------------------------------------------
-  // Bulk load (Internal-Key auth, service startup)
+  // Bulk preload (Internal-Key auth, service startup)
   // ------------------------------------------------------------------
 
   /**
-   * Bulk-load all configs, secrets, and active prompts for this service.
+   * Preload all tenant configs, secrets, and active prompts into cache.
    *
-   * Returns everything the service needs to operate across all tenants
-   * in a single HTTP call. Designed for service startup to avoid
-   * per-tenant round-trips.
+   * Fetches everything the service needs across all tenants in a single
+   * HTTP call and populates the config and prompt caches. Designed for
+   * service startup — call once, then use {@link getConfig},
+   * {@link getSecret}, and {@link getPrompt} afterward (all cache hits,
+   * zero round-trips).
    *
-   * The result is **not cached** — call this once at startup and store
-   * the result yourself.
-   *
-   * @returns BulkServiceData with per-tenant configs, secrets, and active prompts.
    * @throws {@link VaultAuthError} Internal key is missing or invalid (401/403).
    * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
    */
-  async getBulkConfig(): Promise<BulkServiceData> {
+  async preload(): Promise<void> {
     const raw = await this.request(
       "GET",
       `/api/v1/vault/configs/bulk/${this.service}`,
     );
     const data = raw as Record<string, unknown>;
     const rawTenants = (data.tenants ?? {}) as Record<string, Record<string, unknown>>;
-    const tenants: Record<string, BulkTenantEntry> = {};
+    const serviceName = data.service as string;
 
     for (const [tid, tdata] of Object.entries(rawTenants)) {
-      const rawPrompts = (tdata.prompts ?? {}) as Record<string, Record<string, unknown>>;
-      const prompts: Record<string, BulkPromptEntry> = {};
+      const config: TenantConfig = {
+        tenantId: tid,
+        service: serviceName,
+        enabled: tdata.enabled as boolean,
+        config: (tdata.config as Record<string, unknown>) ?? {},
+        secrets: (tdata.secrets as Record<string, unknown>) ?? {},
+      };
+      this.configCache.set(tid, config);
 
+      const rawPrompts = (tdata.prompts ?? {}) as Record<string, Record<string, unknown>>;
       for (const [pkey, pdata] of Object.entries(rawPrompts)) {
         const pd = this.convertTopLevel(pdata);
-        prompts[pkey] = {
+        const prompt: ActivePrompt = {
+          promptId: "",
+          tenantId: tid,
+          service: serviceName,
+          promptKey: pkey,
           version: pd.version as number,
           versionName: pd.versionName as string,
           sections: (pd.sections as Record<string, unknown>) ?? {},
         };
+        this.promptCache.set(`${tid}:${pkey}`, prompt);
       }
-
-      tenants[tid] = {
-        enabled: tdata.enabled as boolean,
-        config: (tdata.config as Record<string, unknown>) ?? {},
-        secrets: (tdata.secrets as Record<string, unknown>) ?? {},
-        prompts,
-      };
     }
-
-    return { service: data.service as string, tenants };
   }
 }

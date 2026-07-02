@@ -13,9 +13,6 @@ from hermes_vault.exceptions import (
 )
 from hermes_vault.models import (
     ActivePrompt,
-    BulkPromptEntry,
-    BulkServiceData,
-    BulkTenantEntry,
     CreatedPromptVersion,
     EnsuredPrompt,
     PromptListItem,
@@ -702,21 +699,16 @@ class HermesVault:
         self._invalidate_prompts()
 
     # ------------------------------------------------------------------
-    # Bulk load (Internal-Key auth, service startup)
+    # Bulk preload (Internal-Key auth, service startup)
     # ------------------------------------------------------------------
 
-    def get_bulk_config(self) -> BulkServiceData:
-        """Bulk-load all configs, secrets, and active prompts for this service.
+    def preload(self) -> None:
+        """Preload all tenant configs, secrets, and active prompts into cache.
 
-        Returns everything the service needs to operate across all tenants
-        in a single HTTP call. Designed for service startup to avoid
-        per-tenant round-trips.
-
-        The result is **not cached** — call this once at startup and store
-        the result yourself.
-
-        Returns:
-            BulkServiceData with per-tenant configs, secrets, and active prompts.
+        Fetches everything the service needs across all tenants in a single
+        HTTP call and populates the config and prompt caches. Designed for
+        service startup — call once, then use ``get_config``, ``get_secret``,
+        and ``get_prompt`` afterward (all cache hits, zero round-trips).
 
         Raises:
             VaultAuthError: Internal key is missing or invalid (401/403).
@@ -725,19 +717,24 @@ class HermesVault:
         data = self._request(
             "GET", f"/api/v1/vault/configs/bulk/{self._service}"
         )
-        tenants: dict[str, BulkTenantEntry] = {}
         for tid, tdata in data.get("tenants", {}).items():
-            prompts: dict[str, BulkPromptEntry] = {}
+            config = TenantConfig(
+                tenant_id=tid,
+                service=data["service"],
+                enabled=tdata["enabled"],
+                config=tdata.get("config", {}),
+                secrets=tdata.get("secrets", {}),
+            )
+            self._config_cache.set(tid, config)
+
             for pkey, pdata in tdata.get("prompts", {}).items():
-                prompts[pkey] = BulkPromptEntry(
+                prompt = ActivePrompt(
+                    prompt_id="",
+                    tenant_id=tid,
+                    service=data["service"],
+                    prompt_key=pkey,
                     version=pdata["version"],
                     version_name=pdata["version_name"],
                     sections=pdata.get("sections", {}),
                 )
-            tenants[tid] = BulkTenantEntry(
-                enabled=tdata["enabled"],
-                config=tdata.get("config", {}),
-                secrets=tdata.get("secrets", {}),
-                prompts=prompts,
-            )
-        return BulkServiceData(service=data["service"], tenants=tenants)
+                self._prompt_cache.set(f"{tid}:{pkey}", prompt)

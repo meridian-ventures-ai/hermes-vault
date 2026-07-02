@@ -101,7 +101,7 @@ vault.delete_version(versions[0].id)
 vault.delete_prompt(slot.id)
 ```
 
-### Usage (bulk load — service startup)
+### Usage (bulk preload — service startup)
 
 ```python
 vault = HermesVault(
@@ -110,12 +110,12 @@ vault = HermesVault(
     service="phoenix",
 )
 
-# Load everything at startup in a single call
-bulk = vault.get_bulk_config()
-for tenant_id, tenant_data in bulk.tenants.items():
-    print(tenant_id, tenant_data.enabled, tenant_data.config)
-    for prompt_key, prompt in tenant_data.prompts.items():
-        print(f"  {prompt_key}: v{prompt.version} ({prompt.version_name})")
+# Preload all tenants at startup (one HTTP call)
+vault.preload()
+
+# Now use normal SDK methods — all cache hits, zero round-trips
+config = vault.get_config("sae_university")
+prompt = vault.get_prompt("sae_university", "system_prompt")
 ```
 
 ## TypeScript SDK
@@ -206,7 +206,7 @@ await vault.deleteVersion(versions[0].id);
 await vault.deletePrompt(slot.id);
 ```
 
-### Usage (bulk load — service startup)
+### Usage (bulk preload — service startup)
 
 ```typescript
 const vault = new HermesVault({
@@ -215,14 +215,12 @@ const vault = new HermesVault({
   service: "phoenix",
 });
 
-// Load everything at startup in a single call
-const bulk = await vault.getBulkConfig();
-for (const [tenantId, tenantData] of Object.entries(bulk.tenants)) {
-  console.log(tenantId, tenantData.enabled, tenantData.config);
-  for (const [promptKey, prompt] of Object.entries(tenantData.prompts)) {
-    console.log(`  ${promptKey}: v${prompt.version} (${prompt.versionName})`);
-  }
-}
+// Preload all tenants at startup (one HTTP call)
+await vault.preload();
+
+// Now use normal SDK methods — all cache hits, zero round-trips
+const config = await vault.getConfig("sae_university");
+const prompt = await vault.getPrompt("sae_university", "system_prompt");
 ```
 
 ---
@@ -301,7 +299,7 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 
 ## Cache Behavior
 
-- **Lazy loading**: nothing fetched at startup. First request per tenant triggers a fetch.
+- **Lazy loading**: nothing fetched at startup. First request per tenant triggers a fetch. Use `preload()` to warm all caches upfront in a single HTTP call.
 - **No TTL by default**: cached entries persist indefinitely until explicitly invalidated or evicted by LRU. Pass `config_ttl_seconds` / `prompt_ttl_seconds` (Python) or `configTtlSeconds` / `promptTtlSeconds` (TypeScript) to enable time-based expiration.
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
 - **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.

@@ -92,7 +92,7 @@ Returns the active prompt version. Sentinel tries tenant-specific first, falls b
 
 ### 3. `GET /api/v1/vault/configs/bulk/{service}`
 
-Bulk-load all configs, secrets, and active prompts for a service across every tenant. Designed for service startup — returns everything the service needs in a single call.
+Bulk-load all configs, secrets, and active prompts for a service across every tenant. The SDK uses this endpoint internally for `preload()` cache warming — it is not exposed as a return value. Designed for service startup so that subsequent `getConfig()`, `getSecret()`, and `getPrompt()` calls are all cache hits.
 
 **Response** — `BulkServiceResponse`:
 
