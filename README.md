@@ -263,7 +263,7 @@ console.log(config.secretsSources);
 // { apiKey: "tenant", elevenlabsApiKey: "_default" }
 ```
 
-When the `_default` tenant's config is updated, all tenants that inherit from it are affected. The SDK handles this automatically: calling `invalidate("_default")` clears the **entire** config cache (not just the `_default` key).
+When the `_default` tenant's config or prompts are updated, all tenants that inherit from it are affected. The SDK handles this automatically: calling `invalidate("_default")` clears **both** the entire config cache and the entire prompt cache.
 
 ---
 
@@ -346,4 +346,4 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
 - **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.
 - **Tenant switch**: call `set_operating_tenant_id` / `setOperatingTenantId` instead of creating a new instance — the cache is preserved across switches.
-- **`invalidate(tenant_id, resource?)`**: clears cache entries for that tenant. Pass `"config"` or `"prompt"` to target a single cache, or omit to clear both. When `tenant_id` is `"_default"`, the entire config cache is cleared because `_default` values propagate to every tenant via per-key merge.
+- **`invalidate(tenant_id, resource?)`**: clears cache entries for that tenant. Pass `"config"` or `"prompt"` to target a single cache, or omit to clear both. When `tenant_id` is `"_default"`, both entire caches are cleared — config because `_default` values propagate via per-key merge, prompts because tenants without their own prompt inherit from `_default`.

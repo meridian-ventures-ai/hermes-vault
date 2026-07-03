@@ -296,8 +296,13 @@ class HermesVault:
 
         Uses targeted ``delete_prefix`` when ``operating_tenant_id`` is set,
         otherwise falls back to clearing the entire prompt cache.
+        When ``operating_tenant_id`` is ``"_default"``, the entire prompt
+        cache is cleared because tenants without their own prompt inherit
+        from ``_default``.
         """
-        if self._operating_tenant_id:
+        if self._operating_tenant_id == "_default":
+            self._prompt_cache.clear()
+        elif self._operating_tenant_id:
             self._prompt_cache.delete_prefix(self._operating_tenant_id)
         else:
             self._prompt_cache.clear()
@@ -311,8 +316,9 @@ class HermesVault:
         When omitted, both config and prompt caches are cleared.
 
         When ``tenant_id`` is ``"_default"``, the **entire** config cache
-        is cleared because ``_default`` values propagate to every tenant
-        via per-key merge.
+        is cleared (because ``_default`` values propagate to every tenant
+        via per-key merge) and the **entire** prompt cache is cleared
+        (because tenants without their own prompt inherit from ``_default``).
 
         Args:
             tenant_id: Tenant identifier to invalidate.
@@ -325,7 +331,10 @@ class HermesVault:
             else:
                 self._config_cache.delete(tenant_id)
         if resource is None or resource == "prompt":
-            self._prompt_cache.delete_prefix(tenant_id)
+            if tenant_id == "_default":
+                self._prompt_cache.clear()
+            else:
+                self._prompt_cache.delete_prefix(tenant_id)
 
     # ------------------------------------------------------------------
     # Write operations (JWT auth only)

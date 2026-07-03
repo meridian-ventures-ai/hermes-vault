@@ -10,7 +10,7 @@ Per-key config merge with `_default` tenant fallback and provenance metadata.
 |---|---|
 | **`TenantConfig` model** | New `config_sources` / `configSources` and `secrets_sources` / `secretsSources` fields. Each maps config/secret keys to their origin: `"tenant"`, `"_default"`, or `"merged"` (for lists from both sources). Nested dicts report provenance at the sub-key level. |
 | **`BulkTenantEntry` model** | Same new `config_sources` / `secrets_sources` fields added. |
-| **`invalidate("_default")`** | When `tenant_id` is `"_default"`, the entire config cache is cleared (not just the `_default` key) because `_default` values propagate to every tenant via per-key merge. |
+| **`invalidate("_default")`** | When `tenant_id` is `"_default"`, both the entire config cache and prompt cache are cleared — config because `_default` values propagate to every tenant via per-key merge, prompts because tenants without their own prompt inherit from `_default`. |
 | **`get_config()` / `getConfig()`** | No logic change — Sentinel now returns merged data with provenance. The SDK parses and caches the new fields. |
 | **`preload()`** | Parses `config_sources` / `secrets_sources` from bulk response. `_default` tenant is excluded from the bulk tenant list (server-side). |
 | **`update_config()` / `updateConfig()`** | Returns the new provenance fields in the response. |

@@ -150,6 +150,9 @@ export declare class HermesVault {
      *
      * Uses targeted `deletePrefix` when `operatingTenantId` is set,
      * otherwise falls back to clearing the entire prompt cache.
+     * When `operatingTenantId` is `"_default"`, the entire prompt cache
+     * is cleared because tenants without their own prompt inherit from
+     * `_default`.
      */
     private invalidatePrompts;
     /**
@@ -159,7 +162,9 @@ export declare class HermesVault {
      * When omitted, both config and prompt caches are cleared.
      *
      * When `tenantId` is `"_default"`, the **entire** config cache is cleared
-     * because `_default` values propagate to every tenant via per-key merge.
+     * (because `_default` values propagate to every tenant via per-key merge)
+     * and the **entire** prompt cache is cleared (because tenants without their
+     * own prompt inherit from `_default`).
      *
      * @param tenantId - Tenant identifier to invalidate.
      * @param resource - `"config"` or `"prompt"` to target a single cache,
