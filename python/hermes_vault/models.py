@@ -19,6 +19,11 @@ class TenantConfig:
         enabled: Whether the tenant/service pair is active.
         config: Non-sensitive operational settings (voice, model, thresholds, etc.).
         secrets: Decrypted secret key-value pairs (API keys, tokens, etc.).
+        config_sources: Per-key provenance metadata for config — values are
+            ``"tenant"``, ``"_default"``, or ``"merged"`` (for lists from
+            both sources). Nested dicts report provenance at the sub-key level.
+        secrets_sources: Per-key provenance metadata for secrets — same
+            semantics as ``config_sources``.
     """
 
     tenant_id: str
@@ -26,6 +31,8 @@ class TenantConfig:
     enabled: bool
     config: dict[str, Any] = field(default_factory=dict)
     secrets: dict[str, Any] = field(default_factory=dict)
+    config_sources: dict[str, Any] = field(default_factory=dict)
+    secrets_sources: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -202,12 +209,16 @@ class BulkTenantEntry:
         enabled: Whether the tenant/service pair is active.
         config: Non-sensitive operational settings.
         secrets: Decrypted secret key-value pairs.
+        config_sources: Per-key provenance metadata for config.
+        secrets_sources: Per-key provenance metadata for secrets.
         prompts: Active prompts keyed by prompt_key.
     """
 
     enabled: bool
     config: dict[str, Any] = field(default_factory=dict)
     secrets: dict[str, Any] = field(default_factory=dict)
+    config_sources: dict[str, Any] = field(default_factory=dict)
+    secrets_sources: dict[str, Any] = field(default_factory=dict)
     prompts: dict[str, BulkPromptEntry] = field(default_factory=dict)
 
 

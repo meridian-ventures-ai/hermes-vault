@@ -193,11 +193,18 @@ class HermesVault:
         Returns a cached result if available and not expired, otherwise
         calls ``GET /api/v1/vault/configs/{tenant_id}/{service}``.
 
+        Sentinel performs a per-key merge of the ``_default`` tenant's
+        config with the target tenant's config. The response includes
+        ``config_sources`` and ``secrets_sources`` provenance metadata
+        indicating where each key originated (``"tenant"``, ``"_default"``,
+        or ``"merged"``).
+
         Args:
             tenant_id: Tenant identifier (e.g. ``"sae_university"``).
 
         Returns:
-            TenantConfig with ``.config`` and ``.secrets`` dicts.
+            TenantConfig with ``.config``, ``.secrets``, ``.config_sources``,
+            and ``.secrets_sources`` dicts.
 
         Raises:
             VaultNotFoundError: Tenant/service pair does not exist (404).
@@ -217,6 +224,8 @@ class HermesVault:
             enabled=data["enabled"],
             config=data.get("config", {}),
             secrets=data.get("secrets", {}),
+            config_sources=data.get("config_sources", {}),
+            secrets_sources=data.get("secrets_sources", {}),
         )
         self._config_cache.set(tenant_id, config)
         return config
@@ -301,13 +310,20 @@ class HermesVault:
         When ``resource`` is provided, only the matching cache is cleared.
         When omitted, both config and prompt caches are cleared.
 
+        When ``tenant_id`` is ``"_default"``, the **entire** config cache
+        is cleared because ``_default`` values propagate to every tenant
+        via per-key merge.
+
         Args:
             tenant_id: Tenant identifier to invalidate.
             resource: ``"config"`` or ``"prompt"`` to target a single cache,
                 or ``None`` to clear both (default).
         """
         if resource is None or resource == "config":
-            self._config_cache.delete(tenant_id)
+            if tenant_id == "_default":
+                self._config_cache.clear()
+            else:
+                self._config_cache.delete(tenant_id)
         if resource is None or resource == "prompt":
             self._prompt_cache.delete_prefix(tenant_id)
 
@@ -360,6 +376,8 @@ class HermesVault:
             enabled=data["enabled"],
             config=data.get("config", {}),
             secrets=data.get("secrets", {}),
+            config_sources=data.get("config_sources", {}),
+            secrets_sources=data.get("secrets_sources", {}),
         )
 
     def get_prompt_versions(
@@ -735,6 +753,8 @@ class HermesVault:
                 enabled=tdata["enabled"],
                 config=tdata.get("config", {}),
                 secrets=tdata.get("secrets", {}),
+                config_sources=tdata.get("config_sources", {}),
+                secrets_sources=tdata.get("secrets_sources", {}),
             )
             self._config_cache.set(tid, config)
 
@@ -759,6 +779,8 @@ class HermesVault:
                 enabled=tdata["enabled"],
                 config=tdata.get("config", {}),
                 secrets=tdata.get("secrets", {}),
+                config_sources=tdata.get("config_sources", {}),
+                secrets_sources=tdata.get("secrets_sources", {}),
                 prompts=prompts,
             )
         return BulkServiceData(service=data["service"], tenants=bulk_tenants)

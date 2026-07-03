@@ -227,6 +227,46 @@ const prompt = await vault.getPrompt("sae_university", "system_prompt");
 
 ---
 
+## `_default` Tenant & Per-Key Config Merge
+
+Sentinel supports a `_default` tenant whose config and secrets act as the base layer for all tenants. When you call `get_config("sae_university")`, Sentinel resolves the effective config by merging `_default`'s values with the tenant's values **per-key**:
+
+- **Scalars**: tenant's value wins if present and non-null; otherwise `_default`'s value.
+- **Nested dicts**: one-level deep merge — sub-keys resolved independently.
+- **Lists of dicts**: deduplicated by `name` key; tenant's version wins on conflict.
+
+The response includes `config_sources` / `secrets_sources` provenance metadata:
+
+### Python
+
+```python
+config = vault.get_config("sae_university")
+
+# Check where each key came from
+print(config.config_sources)
+# {"timezone": "tenant", "openai_api_key": "_default", "tools": "merged"}
+
+print(config.secrets_sources)
+# {"api_key": "tenant", "elevenlabs_api_key": "_default"}
+```
+
+### TypeScript
+
+```typescript
+const config = await vault.getConfig("sae_university");
+
+// Check where each key came from
+console.log(config.configSources);
+// { timezone: "tenant", openaiApiKey: "_default", tools: "merged" }
+
+console.log(config.secretsSources);
+// { apiKey: "tenant", elevenlabsApiKey: "_default" }
+```
+
+When the `_default` tenant's config is updated, all tenants that inherit from it are affected. The SDK handles this automatically: calling `invalidate("_default")` clears the **entire** config cache (not just the `_default` key).
+
+---
+
 ## Local Development
 
 ### Testing SDK changes in consuming services
@@ -306,4 +346,4 @@ See [CONTRACT.md](CONTRACT.md) for the Sentinel endpoint and response shape refe
 - **LRU eviction**: when cache exceeds `max_cache_size` (default 100), oldest-accessed entry is evicted.
 - **Targeted invalidation**: when the operating tenant is set (via constructor or `set_operating_tenant_id` / `setOperatingTenantId`), write methods invalidate only that tenant's prompt cache entries. Without it, write methods fall back to clearing the entire prompt cache.
 - **Tenant switch**: call `set_operating_tenant_id` / `setOperatingTenantId` instead of creating a new instance — the cache is preserved across switches.
-- **`invalidate(tenant_id, resource?)`**: clears cache entries for that tenant. Pass `"config"` or `"prompt"` to target a single cache, or omit to clear both.
+- **`invalidate(tenant_id, resource?)`**: clears cache entries for that tenant. Pass `"config"` or `"prompt"` to target a single cache, or omit to clear both. When `tenant_id` is `"_default"`, the entire config cache is cleared because `_default` values propagate to every tenant via per-key merge.

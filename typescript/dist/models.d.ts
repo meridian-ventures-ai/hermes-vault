@@ -10,6 +10,17 @@ export interface TenantConfig {
     config: Record<string, unknown>;
     /** Decrypted secret key-value pairs (API keys, tokens, etc.). */
     secrets: Record<string, unknown>;
+    /**
+     * Per-key provenance metadata for config — values are `"tenant"`,
+     * `"_default"`, or `"merged"` (for lists from both sources).
+     * Nested dicts report provenance at the sub-key level.
+     */
+    configSources: Record<string, unknown>;
+    /**
+     * Per-key provenance metadata for secrets — same semantics as
+     * `configSources`.
+     */
+    secretsSources: Record<string, unknown>;
 }
 /** Active prompt version returned by Sentinel. */
 export interface ActivePrompt {
@@ -128,6 +139,10 @@ export interface BulkTenantEntry {
     config: Record<string, unknown>;
     /** Decrypted secret key-value pairs. */
     secrets: Record<string, unknown>;
+    /** Per-key provenance metadata for config. */
+    configSources: Record<string, unknown>;
+    /** Per-key provenance metadata for secrets. */
+    secretsSources: Record<string, unknown>;
     /** Active prompts keyed by prompt_key. */
     prompts: Record<string, BulkPromptEntry>;
 }

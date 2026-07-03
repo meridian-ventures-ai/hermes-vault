@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.6.0
+
+Per-key config merge with `_default` tenant fallback and provenance metadata.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **`TenantConfig` model** | New `config_sources` / `configSources` and `secrets_sources` / `secretsSources` fields. Each maps config/secret keys to their origin: `"tenant"`, `"_default"`, or `"merged"` (for lists from both sources). Nested dicts report provenance at the sub-key level. |
+| **`BulkTenantEntry` model** | Same new `config_sources` / `secrets_sources` fields added. |
+| **`invalidate("_default")`** | When `tenant_id` is `"_default"`, the entire config cache is cleared (not just the `_default` key) because `_default` values propagate to every tenant via per-key merge. |
+| **`get_config()` / `getConfig()`** | No logic change — Sentinel now returns merged data with provenance. The SDK parses and caches the new fields. |
+| **`preload()`** | Parses `config_sources` / `secrets_sources` from bulk response. `_default` tenant is excluded from the bulk tenant list (server-side). |
+| **`update_config()` / `updateConfig()`** | Returns the new provenance fields in the response. |
+
+### Sentinel changes (server-side)
+
+- **`_default` tenant**: A reserved tenant whose config and secrets act as the base layer for all tenants. Per-key merge resolves each key independently: scalars (tenant wins if present), nested dicts (one-level deep merge), lists of dicts (dedup by `name`, tenant wins on conflict).
+- **`_default` invalidation**: When `_default` config is updated, Sentinel sends a wildcard invalidation so all consumers clear their entire config cache.
+
+### Documentation
+
+- Updated `CONTRACT.md` — endpoints 1, 3, 4 now include `config_sources` / `secrets_sources` fields and describe per-key merge behavior.
+- Updated `README.md` — added `_default` tenant and provenance metadata documentation.
+
+---
+
 ## 1.5.0
 
 Bulk preload as cache-warming — `get_bulk_config()` / `getBulkConfig()` replaced with `preload()`.

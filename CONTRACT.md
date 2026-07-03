@@ -29,7 +29,7 @@ Write endpoints enforce tenant isolation via the `X-Operating-Tenant-Id` header.
 
 ### 1. `GET /api/v1/vault/configs/{tenant_id}/{service}`
 
-Returns merged global + service config with decrypted secrets.
+Returns merged global + service config with decrypted secrets. Sentinel performs a per-key merge of the `_default` tenant's config with the target tenant's config and returns provenance metadata indicating where each key originated.
 
 **Response** — `ConfigResponse`:
 
@@ -41,11 +41,24 @@ Returns merged global + service config with decrypted secrets.
   "config": {
     "voice": "alloy",
     "max_call_duration": 300,
-    "default_openai_model": "gpt-4o"
+    "default_openai_model": "gpt-4o",
+    "openai_api_key": "sk-global-key"
   },
   "secrets": {
     "twilio_account_sid": "AC12345678",
-    "twilio_auth_token": "secret_value"
+    "twilio_auth_token": "secret_value",
+    "elevenlabs_api_key": "el-global-key"
+  },
+  "config_sources": {
+    "voice": "tenant",
+    "max_call_duration": "tenant",
+    "default_openai_model": "tenant",
+    "openai_api_key": "_default"
+  },
+  "secrets_sources": {
+    "twilio_account_sid": "tenant",
+    "twilio_auth_token": "tenant",
+    "elevenlabs_api_key": "_default"
   }
 }
 ```
@@ -57,6 +70,8 @@ Returns merged global + service config with decrypted secrets.
 | `enabled` | `boolean` | Whether the tenant/service is enabled |
 | `config` | `object` | Non-sensitive operational configuration |
 | `secrets` | `object` | Decrypted secret key-value pairs |
+| `config_sources` | `object` | Per-key provenance: `"tenant"`, `"_default"`, or `"merged"`. Nested dicts report at sub-key level. |
+| `secrets_sources` | `object` | Per-key provenance for secrets (same semantics as `config_sources`) |
 
 ### 2. `GET /api/v1/prompts/{tenant_id}/{service}/{prompt_key}/active`
 
@@ -94,6 +109,8 @@ Returns the active prompt version. Sentinel tries tenant-specific first, falls b
 
 Bulk-load all configs, secrets, and active prompts for a service across every tenant. The SDK uses this endpoint internally for `preload()` cache warming — it is not exposed as a return value. Designed for service startup so that subsequent `getConfig()`, `getSecret()`, and `getPrompt()` calls are all cache hits.
 
+Each tenant entry includes per-key merge with the `_default` tenant and provenance metadata. The `_default` tenant itself is excluded from the tenant list.
+
 **Response** — `BulkServiceResponse`:
 
 ```json
@@ -104,6 +121,8 @@ Bulk-load all configs, secrets, and active prompts for a service across every te
       "enabled": true,
       "config": { "voice": "alloy", "max_call_duration": 300 },
       "secrets": { "twilio_account_sid": "AC12345678" },
+      "config_sources": { "voice": "tenant", "max_call_duration": "tenant" },
+      "secrets_sources": { "twilio_account_sid": "tenant" },
       "prompts": {
         "system_prompt": {
           "version": 3,
@@ -119,10 +138,12 @@ Bulk-load all configs, secrets, and active prompts for a service across every te
 | Field | Type | Description |
 |---|---|---|
 | `service` | `string` | Service name |
-| `tenants` | `object` | Per-tenant data keyed by tenant_id |
+| `tenants` | `object` | Per-tenant data keyed by tenant_id (excludes `_default`) |
 | `tenants[].enabled` | `boolean` | Whether the tenant/service pair is active |
 | `tenants[].config` | `object` | Non-sensitive operational configuration |
 | `tenants[].secrets` | `object` | Decrypted secret key-value pairs |
+| `tenants[].config_sources` | `object` | Per-key provenance for config |
+| `tenants[].secrets_sources` | `object` | Per-key provenance for secrets |
 | `tenants[].prompts` | `object` | Active prompts keyed by prompt_key |
 | `tenants[].prompts[].version` | `integer` | Active version number |
 | `tenants[].prompts[].version_name` | `string` | Human-readable version label |
@@ -135,6 +156,8 @@ Bulk-load all configs, secrets, and active prompts for a service across every te
 ### 4. `PATCH /api/v1/vault/configs/{tenant_id}/{service}`
 
 Update config and/or secrets for a tenant/service pair. Secrets are encrypted server-side before storage. Sentinel enforces that `tenant_id` matches the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
+
+When `tenant_id` is `_default`, Sentinel sends a wildcard cache invalidation so all consumer services clear their entire config cache (since `_default` values propagate to every tenant).
 
 **Request** — `ConfigUpdateRequest`:
 
@@ -150,7 +173,7 @@ Update config and/or secrets for a tenant/service pair. Secrets are encrypted se
 | `config` | `object \| null` | No | Non-sensitive config to merge |
 | `secrets` | `object \| null` | No | Plaintext secrets to merge (encrypted by Sentinel) |
 
-**Response** — `ConfigResponse` (same shape as the read endpoint).
+**Response** — `ConfigResponse` (same shape as the read endpoint, including `config_sources` and `secrets_sources`).
 
 ### 5. `GET /api/v1/prompts/{tenant_id}/{service}/{prompt_key}/versions`
 

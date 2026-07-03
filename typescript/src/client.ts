@@ -221,8 +221,14 @@ export class HermesVault {
    * Returns a cached result if available and not expired, otherwise
    * calls `GET /api/v1/vault/configs/{tenantId}/{service}`.
    *
+   * Sentinel performs a per-key merge of the `_default` tenant's config
+   * with the target tenant's config. The response includes `configSources`
+   * and `secretsSources` provenance metadata indicating where each key
+   * originated (`"tenant"`, `"_default"`, or `"merged"`).
+   *
    * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
-   * @returns TenantConfig with `.config` and `.secrets` dicts.
+   * @returns TenantConfig with `.config`, `.secrets`, `.configSources`,
+   *   and `.secretsSources` dicts.
    * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
    * @throws {@link VaultAuthError} Invalid or missing internal key (401/403).
    * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
@@ -242,6 +248,8 @@ export class HermesVault {
       enabled: data.enabled as boolean,
       config: (data.config as Record<string, unknown>) ?? {},
       secrets: (data.secrets as Record<string, unknown>) ?? {},
+      configSources: (data.configSources as Record<string, unknown>) ?? {},
+      secretsSources: (data.secretsSources as Record<string, unknown>) ?? {},
     };
     this.configCache.set(tenantId, config);
     return config;
@@ -323,13 +331,20 @@ export class HermesVault {
    * When `resource` is provided, only the matching cache is cleared.
    * When omitted, both config and prompt caches are cleared.
    *
+   * When `tenantId` is `"_default"`, the **entire** config cache is cleared
+   * because `_default` values propagate to every tenant via per-key merge.
+   *
    * @param tenantId - Tenant identifier to invalidate.
    * @param resource - `"config"` or `"prompt"` to target a single cache,
    *   or `undefined` to clear both (default).
    */
   invalidate(tenantId: string, resource?: "config" | "prompt"): void {
     if (resource === undefined || resource === "config") {
-      this.configCache.delete(tenantId);
+      if (tenantId === "_default") {
+        this.configCache.clear();
+      } else {
+        this.configCache.delete(tenantId);
+      }
     }
     if (resource === undefined || resource === "prompt") {
       this.promptCache.deletePrefix(tenantId);
@@ -376,6 +391,8 @@ export class HermesVault {
       enabled: data.enabled as boolean,
       config: (data.config as Record<string, unknown>) ?? {},
       secrets: (data.secrets as Record<string, unknown>) ?? {},
+      configSources: (data.configSources as Record<string, unknown>) ?? {},
+      secretsSources: (data.secretsSources as Record<string, unknown>) ?? {},
     };
   }
 
@@ -729,6 +746,8 @@ export class HermesVault {
         enabled: tdata.enabled as boolean,
         config: (tdata.config as Record<string, unknown>) ?? {},
         secrets: (tdata.secrets as Record<string, unknown>) ?? {},
+        configSources: (tdata.config_sources as Record<string, unknown>) ?? {},
+        secretsSources: (tdata.secrets_sources as Record<string, unknown>) ?? {},
       };
       this.configCache.set(tid, config);
 
@@ -757,6 +776,8 @@ export class HermesVault {
         enabled: tdata.enabled as boolean,
         config: (tdata.config as Record<string, unknown>) ?? {},
         secrets: (tdata.secrets as Record<string, unknown>) ?? {},
+        configSources: (tdata.config_sources as Record<string, unknown>) ?? {},
+        secretsSources: (tdata.secrets_sources as Record<string, unknown>) ?? {},
         prompts,
       };
     }

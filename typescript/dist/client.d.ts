@@ -105,8 +105,14 @@ export declare class HermesVault {
      * Returns a cached result if available and not expired, otherwise
      * calls `GET /api/v1/vault/configs/{tenantId}/{service}`.
      *
+     * Sentinel performs a per-key merge of the `_default` tenant's config
+     * with the target tenant's config. The response includes `configSources`
+     * and `secretsSources` provenance metadata indicating where each key
+     * originated (`"tenant"`, `"_default"`, or `"merged"`).
+     *
      * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
-     * @returns TenantConfig with `.config` and `.secrets` dicts.
+     * @returns TenantConfig with `.config`, `.secrets`, `.configSources`,
+     *   and `.secretsSources` dicts.
      * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
      * @throws {@link VaultAuthError} Invalid or missing internal key (401/403).
      * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
@@ -151,6 +157,9 @@ export declare class HermesVault {
      *
      * When `resource` is provided, only the matching cache is cleared.
      * When omitted, both config and prompt caches are cleared.
+     *
+     * When `tenantId` is `"_default"`, the **entire** config cache is cleared
+     * because `_default` values propagate to every tenant via per-key merge.
      *
      * @param tenantId - Tenant identifier to invalidate.
      * @param resource - `"config"` or `"prompt"` to target a single cache,
