@@ -61,8 +61,21 @@ vault = HermesVault(
 vault.set_access_token("<REFRESHED_JWT_TOKEN>")
 vault.set_operating_tenant_id("sae_university")
 
-# Update config/secrets
-vault.update_config("sae_university", config={"voice": "nova"}, secrets={"api_key": "sk-..."})
+# Replace config and/or secrets (full maps — NOT a per-key merge)
+# Omit secrets= to leave secrets unchanged; omit config= to leave config unchanged.
+# Within each map, keys you omit are deleted from the service row.
+vault.update_config(
+    "sae_university",
+    config={
+        "voice": "nova",
+        "timezone": "America/New_York",
+        "max_call_duration": 600,
+    },
+    secrets={
+        "api_key": "sk-...",
+        "twilio_account_sid": "AC...",
+    },
+)
 
 # Prompt management
 slot = vault.ensure_prompt("system_prompt", tenant_id="sae_university")
@@ -166,10 +179,19 @@ const vault = new HermesVault({
 vault.setAccessToken("<REFRESHED_JWT_TOKEN>");
 vault.setOperatingTenantId("sae_university");
 
-// Update config/secrets
+// Replace config and/or secrets (full maps — NOT a per-key merge)
+// Omit secrets to leave secrets unchanged; omit config to leave config unchanged.
+// Within each map, keys you omit are deleted from the service row.
 await vault.updateConfig("sae_university", {
-  config: { voice: "nova" },
-  secrets: { api_key: "sk-..." },
+  config: {
+    voice: "nova",
+    timezone: "America/New_York",
+    max_call_duration: 600,
+  },
+  secrets: {
+    api_key: "sk-...",
+    twilio_account_sid: "AC...",
+  },
 });
 
 // Prompt management
@@ -235,6 +257,8 @@ Sentinel supports a `_default` tenant whose config and secrets act as the base l
 - **Nested dicts**: one-level deep merge — sub-keys resolved independently.
 - **Lists of dicts**: deduplicated by `name` key; tenant's version wins on conflict.
 
+**This merge is read-only.** It applies on `get_config` / `getConfig` and `preload` only — not on writes.
+
 The response includes `config_sources` / `secrets_sources` provenance metadata:
 
 ### Python
@@ -264,6 +288,39 @@ console.log(config.secretsSources);
 ```
 
 When the `_default` tenant's config or prompts are updated, all tenants that inherit from it are affected. The SDK handles this automatically: calling `invalidate("_default")` clears **both** the entire config cache and the entire prompt cache.
+
+---
+
+## Writing Config (`update_config` / `updateConfig`)
+
+`update_config` / `updateConfig` maps to `PATCH /api/v1/vault/configs/{tenant_id}/{service}`.
+
+### Semantics (critical)
+
+| Payload | Behavior |
+|---|---|
+| `config={...}` / `config: {...}` | **Replaces the entire** `config` JSON on the **service-specific** row (`tenant_id` + `service`). Keys not present in the object are **removed** from that row. |
+| `secrets={...}` / `secrets: {...}` | **Replaces the entire** `secrets` JSON on that row. Keys not present are **removed**. |
+| Omit `config` / `secrets` (or pass `None` in Python) | That column is left unchanged. |
+
+There is **no** per-key or deep-merge write. Partial payloads like `{"voice": "nova"}` will wipe every other config key on the service row.
+
+### Safe usage
+
+1. Start from a **known full service-row document** (seed file, admin form state, or your own stored copy of the raw maps).
+2. Apply your edits in memory.
+3. Call `update_config` / `updateConfig` with the **complete** desired `config` and/or `secrets` maps.
+
+### Unsafe: GET → edit one field → PATCH
+
+`get_config` / `getConfig` returns the **merged** view (`global` + service + `_default`), not the raw service row. Writing that object back:
+
+- materializes `_default` keys onto the tenant row, and
+- freezes inheritance (those keys stop following `_default` updates).
+
+If you must derive a write from a GET, strip keys whose provenance is `"_default"` (via `config_sources` / `configSources` and `secrets_sources` / `secretsSources`) and still ensure you retain every tenant-owned key you intend to keep.
+
+The method return value is again the **merged** read view (including provenance), not the raw stored row.
 
 ---
 

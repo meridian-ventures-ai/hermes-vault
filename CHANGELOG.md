@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.1
+
+**Docs fix (critical):** `update_config` / `updateConfig` / `PATCH .../vault/configs` do **not** per-key merge. They **replace** the entire `config` and/or `secrets` JSON on the service-specific row. Per-key merge with `_default` is **read-only** (`get_config` / `preload`).
+
+### Documentation
+
+| Area | Change |
+|---|---|
+| **`update_config()` / `updateConfig()` docstrings** | Rewritten: full-map replace, omit top-level field to leave column unchanged, keys omitted inside a map are deleted, no read-time merge on write. |
+| **`get_config()` / `getConfig()` docstrings** | Note that merge is read-only; do not round-trip as write body without stripping `"_default"` provenance. |
+| **`TenantConfig` model docs** | Clarify this is the merged read view, not the raw service-row document. |
+| **`CONTRACT.md` §1 / §4** | Corrected write semantics; expanded safe/unsafe patterns and response = merged view. |
+| **`README.md`** | Dashboard examples use full maps; new **Writing Config** section; `_default` section states merge is read-only. |
+
+No runtime SDK behavior change — this corrects misleading "merge" language that matched Sentinel implementation incorrectly.
+
+---
+
 ## 1.6.0
 
 Per-key config merge with `_default` tenant fallback and provenance metadata.

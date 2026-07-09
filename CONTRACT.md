@@ -31,6 +31,8 @@ Write endpoints enforce tenant isolation via the `X-Operating-Tenant-Id` header.
 
 Returns merged global + service config with decrypted secrets. Sentinel performs a per-key merge of the `_default` tenant's config with the target tenant's config and returns provenance metadata indicating where each key originated.
 
+**Read-only merge:** per-key merge applies only here (and on bulk load). The write endpoint (PATCH, §4) **replaces** entire `config` / `secrets` maps on the service row — it does not merge. Do not round-trip this response as a PATCH body without stripping `"_default"`-sourced keys (see §4).
+
 **Response** — `ConfigResponse`:
 
 ```json
@@ -155,7 +157,18 @@ Each tenant entry includes per-key merge with the `_default` tenant and provenan
 
 ### 4. `PATCH /api/v1/vault/configs/{tenant_id}/{service}`
 
-Update config and/or secrets for a tenant/service pair. Secrets are encrypted server-side before storage. Sentinel enforces that `tenant_id` matches the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
+Replace config and/or secrets for a tenant/service pair. Secrets are encrypted server-side before storage. Sentinel enforces that `tenant_id` matches the operating tenant resolved from the JWT / `X-Operating-Tenant-Id` header (403 on mismatch).
+
+**Write semantics (critical):** this is **not** a per-key merge. For each top-level field you include:
+
+- `config` — **replaces the entire** `config` JSON column on the **service-specific** row (`tenant_id` + `service`). Keys omitted from the object are **deleted** from that row.
+- `secrets` — **replaces the entire** `secrets` JSON column on that same row. Keys omitted are **deleted**.
+
+Omitting a top-level field (or sending `null`) leaves that column unchanged. There is no partial / deep-merge write: send the **full desired** `config` and/or `secrets` map for the service row.
+
+Per-key merge with `_default` applies only on **read** (endpoints 1 and 3), never on write.
+
+**Do not** round-trip the GET response as a PATCH body without care: GET returns the **merged** view (`global` + service + `_default`). Writing that object back materializes `_default` keys onto the tenant service row and freezes inheritance. Prefer editing from a known full service-row document, or strip keys whose provenance is `"_default"` before write.
 
 When `tenant_id` is `_default`, Sentinel sends a wildcard cache invalidation so all consumer services clear their entire config cache (since `_default` values propagate to every tenant).
 
@@ -163,17 +176,24 @@ When `tenant_id` is `_default`, Sentinel sends a wildcard cache invalidation so 
 
 ```json
 {
-  "config": { "voice": "nova" },
-  "secrets": { "twilio_auth_token": "new_secret_value" }
+  "config": {
+    "voice": "nova",
+    "timezone": "America/New_York",
+    "max_call_duration": 600
+  },
+  "secrets": {
+    "twilio_account_sid": "AC...",
+    "twilio_auth_token": "new_secret_value"
+  }
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `config` | `object \| null` | No | Non-sensitive config to merge |
-| `secrets` | `object \| null` | No | Plaintext secrets to merge (encrypted by Sentinel) |
+| `config` | `object \| null` | No | Full non-sensitive config map to **store** on the service row (replaces existing). Omit/`null` to leave config unchanged. |
+| `secrets` | `object \| null` | No | Full plaintext secrets map to **store** (replaces existing; encrypted by Sentinel). Omit/`null` to leave secrets unchanged. |
 
-**Response** — `ConfigResponse` (same shape as the read endpoint, including `config_sources` and `secrets_sources`).
+**Response** — `ConfigResponse` (same shape as the read endpoint: **merged** view including `config_sources` and `secrets_sources`). The response is not the raw stored row.
 
 ### 5. `GET /api/v1/prompts/{tenant_id}/{service}/{prompt_key}/versions`
 

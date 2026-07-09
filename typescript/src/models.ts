@@ -2,7 +2,14 @@
 // Read models
 // ---------------------------------------------------------------------------
 
-/** Merged config and decrypted secrets for a tenant/service pair. */
+/**
+ * Merged config and decrypted secrets for a tenant/service pair.
+ *
+ * This is the **read-time** view: tenant `global` + service rows, then
+ * per-key merge with `_default`. It is **not** the raw service-row document
+ * stored by `updateConfig` — do not round-trip this object as a write body
+ * without stripping `"_default"`-sourced keys.
+ */
 export interface TenantConfig {
   /** Tenant identifier (e.g. `"sae_university"`). */
   tenantId: string;

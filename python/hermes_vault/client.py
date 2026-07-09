@@ -68,7 +68,15 @@ class HermesVault:
         # Before each request, sync credentials from the session:
         vault.set_access_token(current_jwt_token)
         vault.set_operating_tenant_id("sae_university")
-        vault.update_config("sae_university", config={"voice": "nova"})
+        # config replaces the entire service-row config map (not a merge):
+        vault.update_config(
+            "sae_university",
+            config={
+                "voice": "nova",
+                "timezone": "America/New_York",
+                "max_call_duration": 600,
+            },
+        )
     """
 
     def __init__(
@@ -199,12 +207,16 @@ class HermesVault:
         indicating where each key originated (``"tenant"``, ``"_default"``,
         or ``"merged"``).
 
+        This merge is **read-only**. :meth:`update_config` replaces entire
+        service-row maps and does not per-key merge. Do not use this response
+        as a write body without stripping ``"_default"``-sourced keys.
+
         Args:
             tenant_id: Tenant identifier (e.g. ``"sae_university"``).
 
         Returns:
             TenantConfig with ``.config``, ``.secrets``, ``.config_sources``,
-            and ``.secrets_sources`` dicts.
+            and ``.secrets_sources`` dicts (merged read view).
 
         Raises:
             VaultNotFoundError: Tenant/service pair does not exist (404).
@@ -346,20 +358,42 @@ class HermesVault:
         config: dict[str, Any] | None = None,
         secrets: dict[str, str] | None = None,
     ) -> TenantConfig:
-        """Update config and/or secrets for a tenant/service pair.
+        """Replace config and/or secrets for a tenant/service pair.
 
-        Sends a ``PATCH`` to Sentinel. Secrets are encrypted server-side
-        before storage. Invalidates the config cache for this tenant.
-        Sentinel enforces that ``tenant_id`` matches the operating tenant
-        resolved from the JWT / ``X-Operating-Tenant-Id`` header.
+        Sends a ``PATCH`` to Sentinel. **This is not a per-key merge.**
+
+        Write semantics (critical):
+
+        - If ``config`` is provided, it **replaces the entire** ``config`` JSON
+          on the service-specific row. Keys omitted from the dict are deleted
+          from that row.
+        - If ``secrets`` is provided, it **replaces the entire** ``secrets``
+          JSON on that row (values encrypted server-side). Keys omitted are
+          deleted.
+        - Pass ``None`` for either argument to leave that column unchanged.
+
+        Per-key merge with ``_default`` applies only on **read**
+        (:meth:`get_config` / :meth:`preload`), never on this write.
+
+        Do **not** round-trip :meth:`get_config` output as the write body
+        without care: that response is the merged view (tenant + ``_default``).
+        Writing it back materializes default keys onto the tenant row.
+        Send the full desired service-row maps only.
+
+        Invalidates the config cache for this tenant. Sentinel enforces that
+        ``tenant_id`` matches the operating tenant resolved from the JWT /
+        ``X-Operating-Tenant-Id`` header.
 
         Args:
             tenant_id: Tenant identifier (e.g. ``"sae_university"``).
-            config: Non-sensitive operational config to merge (or ``None`` to skip).
-            secrets: Plaintext secrets to merge (or ``None`` to skip). Encrypted by Sentinel.
+            config: Full non-sensitive config map to store, or ``None`` to skip.
+            secrets: Full plaintext secrets map to store, or ``None`` to skip.
+                Encrypted by Sentinel before persistence.
 
         Returns:
-            Updated TenantConfig with merged values.
+            ``TenantConfig`` for the tenant/service pair after the write — the
+            **read-time merged** view (including ``config_sources`` /
+            ``secrets_sources``), not the raw stored row.
 
         Raises:
             VaultAuthError: JWT is missing or invalid (401/403).

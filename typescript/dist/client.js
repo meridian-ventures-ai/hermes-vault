@@ -49,7 +49,14 @@ function snakeToCamelTopLevel(obj) {
  *   service: "phoenix",
  * });
  * vault.setOperatingTenantId("sae_university");
- * await vault.updateConfig("sae_university", { config: { voice: "nova" } });
+ * // config replaces the entire service-row config map (not a merge):
+ * await vault.updateConfig("sae_university", {
+ *   config: {
+ *     voice: "nova",
+ *     timezone: "America/New_York",
+ *     max_call_duration: 600,
+ *   },
+ * });
  * ```
  */
 class HermesVault {
@@ -162,9 +169,13 @@ class HermesVault {
      * and `secretsSources` provenance metadata indicating where each key
      * originated (`"tenant"`, `"_default"`, or `"merged"`).
      *
+     * This merge is **read-only**. {@link updateConfig} replaces entire
+     * service-row maps and does not per-key merge. Do not use this response
+     * as a write body without stripping `"_default"`-sourced keys.
+     *
      * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
      * @returns TenantConfig with `.config`, `.secrets`, `.configSources`,
-     *   and `.secretsSources` dicts.
+     *   and `.secretsSources` dicts (merged read view).
      * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
      * @throws {@link VaultAuthError} Invalid or missing internal key (401/403).
      * @throws {@link VaultConnectionError} Sentinel is unreachable or timed out.
@@ -295,16 +306,36 @@ class HermesVault {
     // Write operations (JWT auth only)
     // ------------------------------------------------------------------
     /**
-     * Update config and/or secrets for a tenant/service pair.
+     * Replace config and/or secrets for a tenant/service pair.
      *
-     * Sends a `PATCH` to Sentinel. Secrets are encrypted server-side
-     * before storage. Invalidates the config cache for this tenant.
-     * Sentinel enforces that `tenantId` matches the operating tenant
-     * resolved from the JWT / `X-Operating-Tenant-Id` header.
+     * Sends a `PATCH` to Sentinel. **This is not a per-key merge.**
+     *
+     * Write semantics (critical):
+     * - If `updates.config` is provided, it **replaces the entire** `config`
+     *   JSON on the service-specific row. Keys omitted from the object are
+     *   deleted from that row.
+     * - If `updates.secrets` is provided, it **replaces the entire** `secrets`
+     *   JSON on that row (values encrypted server-side). Keys omitted are
+     *   deleted.
+     * - Omit either field to leave that column unchanged.
+     *
+     * Per-key merge with `_default` applies only on **read**
+     * ({@link getConfig} / {@link preload}), never on this write.
+     *
+     * Do **not** round-trip {@link getConfig} output as the write body without
+     * care: that response is the merged view (tenant + `_default`). Writing it
+     * back materializes default keys onto the tenant row. Send the full desired
+     * service-row maps only.
+     *
+     * Invalidates the config cache for this tenant. Sentinel enforces that
+     * `tenantId` matches the operating tenant resolved from the JWT /
+     * `X-Operating-Tenant-Id` header.
      *
      * @param tenantId - Tenant identifier (e.g. `"sae_university"`).
-     * @param updates - Object with optional `config` and/or `secrets` to merge.
-     * @returns Updated TenantConfig with merged values.
+     * @param updates - Optional full `config` and/or `secrets` maps to **store**
+     *   (each replaces its column when present).
+     * @returns {@link TenantConfig} after the write — the **read-time merged**
+     *   view (including `configSources` / `secretsSources`), not the raw row.
      * @throws {@link VaultAuthError} JWT is missing or invalid (401/403).
      * @throws {@link VaultNotFoundError} Tenant/service pair does not exist (404).
      * @throws {@link VaultHttpError} Validation error, tenant mismatch (403), or server error.
