@@ -1,4 +1,4 @@
-import { ActivePrompt, BulkServiceData, CreatedPromptVersion, EnsuredPrompt, PromptListItem, PromptVersion, PromptVersionDetail, TenantConfig } from "./models";
+import { ActivePrompt, BulkServiceData, CreatedPromptVersion, EnsuredPrompt, PromptListItem, PromptSection, PromptVersion, PromptVersionDetail, TenantConfig } from "./models";
 /**
  * Configuration options for the {@link HermesVault} client.
  *
@@ -254,7 +254,9 @@ export declare class HermesVault {
      * @throws {@link VaultHttpError} Validation error, tenant mismatch (403), or server error.
      */
     createPromptVersion(promptId: string, params: {
-        sections: Record<string, unknown>;
+        /** Prefer the ordered array form. A plain record is accepted too,
+         * but its key order is not preserved by JSONB storage. */
+        sections: PromptSection[] | Record<string, unknown>;
         versionName: string;
         versionNote?: string;
         createdBy?: number;

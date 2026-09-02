@@ -79,6 +79,15 @@ Returns merged global + service config with decrypted secrets. Sentinel performs
 
 Returns the active prompt version. Sentinel tries tenant-specific first, falls back to default (NULL tenant).
 
+#### Prompt sections shape
+
+`sections` accepts and returns **two shapes**:
+
+- **Ordered array** (preferred): `[{ "key": "identity", "value": "..." }, ...]`. Section order is part of the data and survives JSONB storage. New writes should use this shape.
+- **Legacy object**: `{ "identity": "...", ... }`. Still returned for versions saved before the array migration. JSONB does not preserve object key order, so these read back in length-then-alphabetical order rather than authored order.
+
+Both SDKs normalize either shape into a plain dict/record for consumers, preserving the order Sentinel sent. JSON examples below use the legacy object form for brevity.
+
 **Response** — `ActivePromptResponse`:
 
 ```json
@@ -105,7 +114,7 @@ Returns the active prompt version. Sentinel tries tenant-specific first, falls b
 | `prompt_key` | `string` | Prompt key (e.g. `system_prompt`) |
 | `version` | `integer` | Active version number |
 | `version_name` | `string` | Human-readable version label |
-| `sections` | `object` | Prompt content sections |
+| `sections` | `array \| object` | Prompt content sections (see [Prompt sections shape](#prompt-sections-shape)) |
 
 ### 3. `GET /api/v1/vault/configs/bulk/{service}`
 
@@ -149,7 +158,7 @@ Each tenant entry includes per-key merge with the `_default` tenant and provenan
 | `tenants[].prompts` | `object` | Active prompts keyed by prompt_key |
 | `tenants[].prompts[].version` | `integer` | Active version number |
 | `tenants[].prompts[].version_name` | `string` | Human-readable version label |
-| `tenants[].prompts[].sections` | `object` | Prompt content sections |
+| `tenants[].prompts[].sections` | `array \| object` | Prompt content sections (see [Prompt sections shape](#prompt-sections-shape)) |
 
 ---
 
@@ -245,7 +254,7 @@ By default (`activate=true`), the new version is set as active and the previous 
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `sections` | `object` | Yes | Complete snapshot of all prompt sections |
+| `sections` | `array \| object` | Yes | Complete snapshot of all prompt sections — ordered array preferred (see [Prompt sections shape](#prompt-sections-shape)) |
 | `version_name` | `string` | Yes | Version label (1-100 chars) |
 | `version_note` | `string \| null` | No | Optional description of changes |
 | `created_by` | `integer \| null` | No | User ID (defaults to JWT user) |
@@ -363,7 +372,7 @@ Get full detail (including sections content) for a single prompt version.
 | `version` | `integer` | Version number |
 | `version_name` | `string` | Human-readable version label |
 | `version_note` | `string \| null` | Optional description of changes |
-| `sections` | `object` | Prompt content sections |
+| `sections` | `array \| object` | Prompt content sections (see [Prompt sections shape](#prompt-sections-shape)) |
 | `is_active` | `boolean` | Whether this version is currently active |
 | `created_by` | `integer \| null` | User ID of the creator |
 | `created_at` | `string` (ISO-8601) | Creation timestamp |

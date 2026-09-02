@@ -13,10 +13,38 @@ import {
   CreatedPromptVersion,
   EnsuredPrompt,
   PromptListItem,
+  PromptSection,
   PromptVersion,
   PromptVersionDetail,
   TenantConfig,
 } from "./models";
+
+/**
+ * Return prompt sections as a plain record, preserving section order.
+ *
+ * Sentinel stores sections as an ordered array of `{ key, value }` items so
+ * that section order survives JSONB storage. Older versions are still stored
+ * as a JSON object. Accept both shapes here so consumers keep reading
+ * `sections` as a record, now in authored order for array payloads.
+ * Malformed array items (missing a string `key`) are skipped.
+ */
+function normalizeSections(raw: unknown): Record<string, unknown> {
+  if (Array.isArray(raw)) {
+    const sections: Record<string, unknown> = {};
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const { key, value } = item as PromptSection;
+      if (typeof key === "string") {
+        sections[key] = value;
+      }
+    }
+    return sections;
+  }
+  if (raw && typeof raw === "object") {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
 
 /**
  * Configuration options for the {@link HermesVault} client.
@@ -316,7 +344,7 @@ export class HermesVault {
       promptKey: data.promptKey as string,
       version: data.version as number,
       versionName: data.versionName as string,
-      sections: (data.sections as Record<string, unknown>) ?? {},
+      sections: normalizeSections(data.sections),
     };
     this.promptCache.set(cacheKey, prompt);
     return prompt;
@@ -494,7 +522,9 @@ export class HermesVault {
   async createPromptVersion(
     promptId: string,
     params: {
-      sections: Record<string, unknown>;
+      /** Prefer the ordered array form. A plain record is accepted too,
+       * but its key order is not preserved by JSONB storage. */
+      sections: PromptSection[] | Record<string, unknown>;
       versionName: string;
       versionNote?: string;
       createdBy?: number;
@@ -629,7 +659,7 @@ export class HermesVault {
       version: data.version as number,
       versionName: data.versionName as string,
       versionNote: (data.versionNote as string | null) ?? null,
-      sections: (data.sections as Record<string, unknown>) ?? {},
+      sections: normalizeSections(data.sections),
       isActive: data.isActive as boolean,
       createdBy: (data.createdBy as number | null) ?? null,
       createdAt: String(data.createdAt),
@@ -663,7 +693,7 @@ export class HermesVault {
       version: data.version as number,
       versionName: data.versionName as string,
       versionNote: (data.versionNote as string | null) ?? null,
-      sections: (data.sections as Record<string, unknown>) ?? {},
+      sections: normalizeSections(data.sections),
       isActive: data.isActive as boolean,
       createdBy: (data.createdBy as number | null) ?? null,
       createdAt: String(data.createdAt),
@@ -709,7 +739,7 @@ export class HermesVault {
       version: data.version as number,
       versionName: data.versionName as string,
       versionNote: (data.versionNote as string | null) ?? null,
-      sections: (data.sections as Record<string, unknown>) ?? {},
+      sections: normalizeSections(data.sections),
       isActive: data.isActive as boolean,
       createdBy: (data.createdBy as number | null) ?? null,
       createdAt: String(data.createdAt),
@@ -804,13 +834,13 @@ export class HermesVault {
           promptKey: pkey,
           version: pd.version as number,
           versionName: pd.versionName as string,
-          sections: (pd.sections as Record<string, unknown>) ?? {},
+          sections: normalizeSections(pd.sections),
         };
         this.promptCache.set(`${tid}:${pkey}`, prompt);
         prompts[pkey] = {
           version: pd.version as number,
           versionName: pd.versionName as string,
-          sections: (pd.sections as Record<string, unknown>) ?? {},
+          sections: normalizeSections(pd.sections),
         };
       }
 

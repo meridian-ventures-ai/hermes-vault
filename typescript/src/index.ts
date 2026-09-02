@@ -2,6 +2,7 @@ export { HermesVault, HermesVaultOptions } from "./client";
 export {
   TenantConfig,
   ActivePrompt,
+  PromptSection,
   PromptVersion,
   PromptVersionDetail,
   CreatedPromptVersion,

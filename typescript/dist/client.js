@@ -4,6 +4,33 @@ exports.HermesVault = void 0;
 const cache_1 = require("./cache");
 const exceptions_1 = require("./exceptions");
 const models_1 = require("./models");
+/**
+ * Return prompt sections as a plain record, preserving section order.
+ *
+ * Sentinel stores sections as an ordered array of `{ key, value }` items so
+ * that section order survives JSONB storage. Older versions are still stored
+ * as a JSON object. Accept both shapes here so consumers keep reading
+ * `sections` as a record, now in authored order for array payloads.
+ * Malformed array items (missing a string `key`) are skipped.
+ */
+function normalizeSections(raw) {
+    if (Array.isArray(raw)) {
+        const sections = {};
+        for (const item of raw) {
+            if (!item || typeof item !== "object")
+                continue;
+            const { key, value } = item;
+            if (typeof key === "string") {
+                sections[key] = value;
+            }
+        }
+        return sections;
+    }
+    if (raw && typeof raw === "object") {
+        return raw;
+    }
+    return {};
+}
 function snakeToCamelTopLevel(obj) {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
@@ -244,7 +271,7 @@ class HermesVault {
             promptKey: data.promptKey,
             version: data.version,
             versionName: data.versionName,
-            sections: data.sections ?? {},
+            sections: normalizeSections(data.sections),
         };
         this.promptCache.set(cacheKey, prompt);
         return prompt;
@@ -511,7 +538,7 @@ class HermesVault {
             version: data.version,
             versionName: data.versionName,
             versionNote: data.versionNote ?? null,
-            sections: data.sections ?? {},
+            sections: normalizeSections(data.sections),
             isActive: data.isActive,
             createdBy: data.createdBy ?? null,
             createdAt: String(data.createdAt),
@@ -540,7 +567,7 @@ class HermesVault {
             version: data.version,
             versionName: data.versionName,
             versionNote: data.versionNote ?? null,
-            sections: data.sections ?? {},
+            sections: normalizeSections(data.sections),
             isActive: data.isActive,
             createdBy: data.createdBy ?? null,
             createdAt: String(data.createdAt),
@@ -575,7 +602,7 @@ class HermesVault {
             version: data.version,
             versionName: data.versionName,
             versionNote: data.versionNote ?? null,
-            sections: data.sections ?? {},
+            sections: normalizeSections(data.sections),
             isActive: data.isActive,
             createdBy: data.createdBy ?? null,
             createdAt: String(data.createdAt),
@@ -661,13 +688,13 @@ class HermesVault {
                     promptKey: pkey,
                     version: pd.version,
                     versionName: pd.versionName,
-                    sections: pd.sections ?? {},
+                    sections: normalizeSections(pd.sections),
                 };
                 this.promptCache.set(`${tid}:${pkey}`, prompt);
                 prompts[pkey] = {
                     version: pd.version,
                     versionName: pd.versionName,
-                    sections: pd.sections ?? {},
+                    sections: normalizeSections(pd.sections),
                 };
             }
             bulkTenants[tid] = {
