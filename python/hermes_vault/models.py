@@ -51,7 +51,8 @@ class ActivePrompt:
         prompt_key: Prompt key (e.g. ``"system_prompt"``).
         version: Active version number.
         version_name: Human-readable version label.
-        sections: Prompt content sections (e.g. ``{"identity": "...", "guidelines": "..."}``).
+        sections: Prompt content sections (e.g. ``{"identity": "...", "guidelines": "..."}``),
+            in authored order.
     """
 
     prompt_id: str

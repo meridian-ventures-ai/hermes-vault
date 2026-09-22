@@ -25,6 +25,33 @@ from hermes_vault.models import (
 )
 
 
+def _normalize_sections(raw: Any) -> dict[str, Any]:
+    """Return prompt sections as a plain dict, preserving section order.
+
+    Sentinel stores sections as an ordered array of ``{"key", "value"}``
+    items so that section order survives JSONB storage. Older versions are
+    still stored as a JSON object. Accept both shapes here so consumers keep
+    reading ``sections`` as a dict, now in authored order for array payloads.
+
+    Args:
+        raw: The ``sections`` value as returned by Sentinel (array, object,
+            or missing).
+
+    Returns:
+        Dict of section key to content, in the order sent by Sentinel.
+        Malformed array items (missing a string ``key``) are skipped.
+    """
+    if isinstance(raw, list):
+        sections: dict[str, Any] = {}
+        for item in raw:
+            if isinstance(item, dict) and isinstance(item.get("key"), str):
+                sections[item["key"]] = item.get("value")
+        return sections
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
 class HermesVault:
     """Client for fetching and managing tenant-scoped config, secrets, and prompts via Sentinel.
 
@@ -298,7 +325,7 @@ class HermesVault:
             prompt_key=data["prompt_key"],
             version=data["version"],
             version_name=data["version_name"],
-            sections=data.get("sections", {}),
+            sections=_normalize_sections(data.get("sections")),
         )
         self._prompt_cache.set(cache_key, prompt)
         return prompt
@@ -461,7 +488,7 @@ class HermesVault:
     def create_prompt_version(
         self,
         prompt_id: str,
-        sections: dict[str, Any],
+        sections: dict[str, Any] | list[dict[str, Any]],
         version_name: str,
         version_note: str | None = None,
         created_by: int | None = None,
@@ -482,7 +509,10 @@ class HermesVault:
 
         Args:
             prompt_id: UUID of the parent prompt.
-            sections: Complete snapshot of all prompt sections.
+            sections: Complete snapshot of all prompt sections. Prefer the
+                ordered array form ``[{"key": ..., "value": ...}, ...]``.
+                A plain dict is accepted too, but its key order is not
+                preserved by JSONB storage.
             version_name: Human-readable version label (1-100 chars).
             version_note: Optional longer description of changes.
             created_by: User ID of the creator (defaults to JWT user if ``None``).
@@ -635,7 +665,7 @@ class HermesVault:
             version=data["version"],
             version_name=data["version_name"],
             version_note=data.get("version_note"),
-            sections=data.get("sections", {}),
+            sections=_normalize_sections(data.get("sections")),
             is_active=data["is_active"],
             created_by=data.get("created_by"),
             created_at=str(data["created_at"]),
@@ -670,7 +700,7 @@ class HermesVault:
             version=data["version"],
             version_name=data["version_name"],
             version_note=data.get("version_note"),
-            sections=data.get("sections", {}),
+            sections=_normalize_sections(data.get("sections")),
             is_active=data["is_active"],
             created_by=data.get("created_by"),
             created_at=str(data["created_at"]),
@@ -720,7 +750,7 @@ class HermesVault:
             version=data["version"],
             version_name=data["version_name"],
             version_note=data.get("version_note"),
-            sections=data.get("sections", {}),
+            sections=_normalize_sections(data.get("sections")),
             is_active=data["is_active"],
             created_by=data.get("created_by"),
             created_at=str(data["created_at"]),
@@ -810,13 +840,13 @@ class HermesVault:
                     prompt_key=pkey,
                     version=pdata["version"],
                     version_name=pdata["version_name"],
-                    sections=pdata.get("sections", {}),
+                    sections=_normalize_sections(pdata.get("sections")),
                 )
                 self._prompt_cache.set(f"{tid}:{pkey}", prompt)
                 prompts[pkey] = BulkPromptEntry(
                     version=pdata["version"],
                     version_name=pdata["version_name"],
-                    sections=pdata.get("sections", {}),
+                    sections=_normalize_sections(pdata.get("sections")),
                 )
             bulk_tenants[tid] = BulkTenantEntry(
                 enabled=tdata["enabled"],

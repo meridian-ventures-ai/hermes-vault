@@ -34,6 +34,20 @@ export interface TenantConfig {
   secretsSources: Record<string, unknown>;
 }
 
+/**
+ * Single prompt section as stored on the wire.
+ *
+ * Sections travel as an ordered array of these items so that section order
+ * survives JSONB storage (object key order does not). Read models still
+ * expose `sections` as a plain record, built in array order.
+ */
+export interface PromptSection {
+  /** Section name shown in the editor (e.g. `"ROLE AND IDENTITY"`). */
+  key: string;
+  /** Section content. */
+  value: unknown;
+}
+
 /** Active prompt version returned by Sentinel. */
 export interface ActivePrompt {
   /** Unique prompt identifier (UUID string). */
@@ -48,7 +62,7 @@ export interface ActivePrompt {
   version: number;
   /** Human-readable version label. */
   versionName: string;
-  /** Prompt content sections (e.g. `{ identity: "...", guidelines: "..." }`). */
+  /** Prompt content sections (e.g. `{ identity: "...", guidelines: "..." }`), in authored order. */
   sections: Record<string, unknown>;
 }
 

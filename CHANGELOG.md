@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.7.0
+
+Ordered prompt sections. Fixes prompt sections reading back in jumbled (length-then-alphabetical) order: JSONB does not preserve JSON object key order, so section order was lost at write time. Sections now travel as an ordered array of `{key, value}` items, whose order JSONB does preserve.
+
+### Changed (both SDKs)
+
+| Area | Change |
+|---|---|
+| **Read paths** (`get_prompt`, `get_version_detail`, version write responses, `preload` bulk) | Sections are normalized through a shared helper: an ordered array payload is rebuilt into a plain dict/record **in array order**; a legacy object payload passes through unchanged. Consumers keep reading `sections` as a dict — no call-site changes needed. Malformed array items (missing a string `key`) are skipped. |
+| **`create_prompt_version()` / `createPromptVersion()`** | `sections` now also accepts the ordered array form (preferred). Plain dict still accepted for backward compatibility, but its key order is not preserved by JSONB storage. |
+| **TS: `PromptSection` model** | New exported interface for the array item shape (`{ key, value }`). |
+| **`CONTRACT.md`** | New "Prompt sections shape" section documenting both shapes; `sections` field tables updated to `array \| object`. |
+
+No breaking changes. Requires Sentinel with array-shape support before *writing* arrays; reading is tolerant of both shapes regardless of Sentinel version.
+
+---
+
 ## 1.6.1
 
 **Docs fix (critical):** `update_config` / `updateConfig` / `PATCH .../vault/configs` do **not** per-key merge. They **replace** the entire `config` and/or `secrets` JSON on the service-specific row. Per-key merge with `_default` is **read-only** (`get_config` / `preload`).
