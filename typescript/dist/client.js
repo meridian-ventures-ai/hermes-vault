@@ -168,8 +168,11 @@ class HermesVault {
         }
         let detail;
         try {
-            const errBody = await response.json();
-            detail = errBody.detail ?? response.statusText;
+            const errBody = (await response.json());
+            const raw = errBody.detail ?? response.statusText;
+            // FastAPI validation errors return detail as an array of objects.
+            // Stringify so the message never reads "[object Object]".
+            detail = typeof raw === "string" ? raw : JSON.stringify(raw);
         }
         catch {
             detail = response.statusText;
