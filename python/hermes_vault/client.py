@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
 import httpx
@@ -212,7 +214,10 @@ class HermesVault:
         detail = ""
         try:
             body = response.json()
-            detail = body.get("detail", response.text)
+            raw = body.get("detail", response.text)
+            # FastAPI validation errors return detail as a list of objects.
+            # Serialize so the message stays readable and matches the TS SDK.
+            detail = raw if isinstance(raw, str) else json.dumps(raw)
         except Exception:
             detail = response.text
 

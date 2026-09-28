@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1
+
+HTTP error messages now stay readable when Sentinel returns structured detail.
+
+### Fixed (both SDKs)
+
+FastAPI validation errors (422) return `detail` as a list of objects. The TS SDK rendered it as `HTTP 422: [object Object]` and Python as a raw repr. Non-string detail is now JSON-serialized, so messages read like `HTTP 422: [{"loc":["body","version_name"],"msg":"String should have at most 100 characters",...}]`.
+
+---
+
 ## 1.7.0
 
 Ordered prompt sections. Fixes prompt sections reading back in jumbled (length-then-alphabetical) order: JSONB does not preserve JSON object key order, so section order was lost at write time. Sections now travel as an ordered array of `{key, value}` items, whose order JSONB does preserve.
